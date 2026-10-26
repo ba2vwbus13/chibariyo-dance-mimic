@@ -1,0 +1,30 @@
+@page { size: A4; margin: 15mm 14mm 16mm 14mm; @bottom-center { content: counter(page) " / " counter(pages); font-size: 8.5pt; color: #57606a; font-family: "Hiragino Sans", sans-serif; } }
+:root { --accent: #0b6aa8; --teal: #0f6e56; --ink: #1f2328; --sub: #57606a; --line: #d0d7de; --bg: #f6f8fa; }
+body { font-family: "Hiragino Sans", "Noto Sans CJK JP", sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.75; margin: 0; }
+h1 { font-size: 22pt; margin: 0 0 2mm; }
+h2 { font-size: 15pt; border-bottom: 2px solid var(--accent); padding-bottom: 1mm; margin: 0 0 3mm; break-after: avoid; }
+h3 { font-size: 12pt; border-left: 5px solid var(--accent); padding-left: 3mm; margin: 6mm 0 2mm; break-after: avoid; }
+h4 { font-size: 10.5pt; margin: 4mm 0 1mm; break-after: avoid; }
+p { margin: 1.5mm 0; }
+.chapter { break-before: page; }
+.subtitle { color: var(--sub); font-size: 12pt; margin-bottom: 6mm; }
+table { border-collapse: collapse; width: 100%; margin: 2mm 0 4mm; font-size: 9pt; }
+tr { break-inside: avoid; }
+caption { break-after: avoid; }
+caption { font-size: 9pt; color: var(--sub); caption-side: top; text-align: center; padding-bottom: 1mm; }
+th, td { border: 1px solid var(--line); padding: 1.2mm 2mm; text-align: left; vertical-align: middle; }
+th { background: var(--bg); }
+td.c, th.c { text-align: center; }
+td img { display: block; margin: 0 auto; }
+figure { margin: 3mm 0 4mm; text-align: center; break-inside: avoid; }
+figure img { max-width: 100%; }
+figure img.photo { border: 1px solid var(--line); }
+figcaption { font-size: 9pt; color: var(--sub); margin-top: 1mm; text-align: center; }
+.row { display: flex; gap: 4mm; justify-content: center; align-items: flex-start; }
+.formula { font-family: "Hiragino Sans", sans-serif; text-align: center; margin: 2mm 0; }
+code { font-family: Menlo, monospace; font-size: 8.5pt; background: var(--bg); padding: 0 1mm; }
+pre { font-family: Menlo, monospace; font-size: 8.3pt; background: var(--bg); padding: 2mm 3mm; border-radius: 1.5mm; white-space: pre-wrap; break-inside: avoid; margin: 1.5mm 0 2.5mm; }
+pre .c { color: var(--sub); }
+ul, ol { margin: 1mm 0; padding-left: 6mm; } li { margin: .5mm 0; }
+.toc li { margin: .8mm 0; }
+.step { font-weight: bold; color: var(--accent); }

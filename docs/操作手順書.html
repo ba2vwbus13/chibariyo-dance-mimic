@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>指ダンス 操作手順書</title>
+<link rel="stylesheet" href="doc.css">
+</head>
+<body>
+
+<h1>指ダンス 操作手順書</h1>
+<div class="subtitle">指の動きで Raspberry Pi Mouse を走らせる・踊らせる</div>
+
+<h3>目次</h3>
+<ol class="toc">
+  <li>使う機器と画面</li>
+  <li>操作の流れ</li>
+  <li>起動の手順</li>
+  <li>指による操作</li>
+  <li>終了の手順</li>
+  <li>turtlesim での確認</li>
+  <li>ロボットと検出画面を並べた動画の作り方</li>
+  <li>初めて使うときの準備</li>
+  <li>うまくいかないとき</li>
+</ol>
+
+<!-- ======================= 1 章 ======================= -->
+<h2 style="margin-top:8mm">1 章 使う機器と画面</h2>
+
+<h3>1.1 使う機器</h3>
+<p>指ダンスは、カメラに映った手の形と人差し指の向きに合わせて、ロボットを走らせたり踊らせたりするシステムである。表 1-1 は、操作に使う機器である。ロボットは Raspberry Pi Mouse V3 であり、名前は chibamouse1 である。この手順書では、Mac Studio を「Mac」、Raspberry Pi Mouse を「ロボット」、Mac とロボットをつなぐ Wi-Fi ルータ &lt;研究用ルータのSSID&gt; を「研究用ルータ」と呼ぶ。図 1-1 は、機器のつながりを示したものである。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 1-1 使う機器</caption>
+  <thead><tr><th style="width:20%">機器</th><th style="width:35%">写真・名前</th><th>操作で使うところ</th></tr></thead>
+  <tr><td>ロボット</td><td><img src="img/robot_side.jpg" style="width:42mm"></td><td>電源スイッチ、モータ用の電源スイッチ</td></tr>
+  <tr><td>Mac</td><td>Mac Studio と Studio Display</td><td>Chrome、ターミナル。カメラは Studio Display の上に付いている</td></tr>
+  <tr><td>研究用ルータ</td><td>&lt;研究用ルータのSSID&gt;</td><td>電源を入れておく。設定は変えない</td></tr>
+</table>
+
+<figure>
+  <img src="img/fig_network.svg" style="width:80%">
+  <figcaption>図 1-1 機器のつながり</figcaption>
+</figure>
+
+<h3>1.2 使う画面</h3>
+<p>操作では、表 1-2 の 5 つの画面を使う。Mac の中では、ROS 2 を動かすための Docker のコンテナ finger_dance が動いており、この手順書ではこれを「コンテナ」と呼ぶ。コンテナの画面は、Chrome で開く「デスクトップ画面」に表示され、コマンドはその中の Terminator という端末で入力する。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 1-2 使う画面</caption>
+  <thead><tr><th style="width:20%">画面</th><th style="width:38%">開き方</th><th>使い方</th></tr></thead>
+  <tr><td>ターミナル</td><td>Mac のアプリ「ターミナル」</td><td>ロボットにログインして、ロボットのノードを起動する</td></tr>
+  <tr><td>デスクトップ画面</td><td>Chrome で <code>http://localhost:6081</code></td><td>コンテナの画面。Terminator と検出画面がここに出る</td></tr>
+  <tr><td>Terminator</td><td>デスクトップ画面の Terminator のアイコン</td><td>コンテナでコマンドを入力する</td></tr>
+  <tr><td>カメラページ</td><td>Chrome で <code>http://localhost:6081/camera.html?port=9091</code></td><td>カメラの映像をコンテナに送る</td></tr>
+  <tr><td>検出画面</td><td>指ダンスを起動すると、デスクトップ画面に開く</td><td>検出した手の点と、手の形の判定を確かめる</td></tr>
+</table>
+
+<!-- ======================= 2 章 ======================= -->
+<div class="chapter">
+<h2>2 章 操作の流れ</h2>
+<p>図 2-1 は、ロボットの電源を入れてから終了するまでの流れである。緑の手順はロボットでの作業、青の手順は Mac での作業である。それぞれの手順の下に、説明している節を書いた。初めて使う Mac では、先に 8 章の準備を行う。</p>
+
+<figure>
+  <img src="img/fig_flow.svg" style="width:100%">
+  <figcaption>図 2-1 操作の流れ</figcaption>
+</figure>
+</div>
+
+<!-- ======================= 3 章 ======================= -->
+<h2 style="margin-top:8mm">3 章 起動の手順</h2>
+
+<h3>3.1 ロボットの電源を入れる</h3>
+<p>ロボットを机の上に置くときは、車輪が浮くように台の上に載せ、走り出しても落ちないようにする。ロボットの電源スイッチを入れると、約 43 秒で起動が終わる。続けて、モータ用の電源スイッチを入れる。モータ用の電源スイッチが切れていると、指令を送っても車輪は回らない。</p>
+
+<h3>3.2 Mac の Wi-Fi を研究用ルータにつなぐ</h3>
+<p>Mac のメニューバーの Wi-Fi のマークを押し、一覧から <b>&lt;研究用ルータのSSID&gt;</b> を選ぶ。インターネットは有線の LAN から使えるので、Wi-Fi を切り替えてもインターネットは使える。研究室用ルータに自動でつながると、操作の途中でロボットとの通信が切れるので、8.3 節の設定をしておく。</p>
+
+<h3>3.3 ロボットのノードを起動する</h3>
+<p>Mac のターミナルで、ロボットにログインする。</p>
+<pre>ssh -i ~/.ssh/pimouse_ed25519 ubuntu@&lt;ロボットのIP&gt;</pre>
+<p>プロンプトが <code>ubuntu@chibamouse1:~$</code> になれば、ロボットにログインできている。続けて、ロボットのモータと光センサを扱う raspimouse ノードを起動する。</p>
+<pre>ros2 launch raspimouse raspimouse.launch.py</pre>
+<p>最後に次の表示が出れば起動できている。このターミナルは、終了するまで閉じない。</p>
+<pre><span class="c">[raspimouse-1] [INFO] [raspimouse]: Raspimouse node activated</span></pre>
+
+<h3>3.4 指ダンスを起動する</h3>
+<p>Chrome で <code>http://localhost:6081</code> を開く。図 3-1 の「接続」を押すと、デスクトップ画面が出る。黒い画面に模様が動いているときはスクリーンセーバーなので、マウスを動かす。図 3-2 の赤い枠の Terminator のアイコンをダブルクリックして、Terminator を開く。Terminator の最初の行に次の表示が出ていれば、コンテナはロボットにつながる設定になっている。</p>
+<pre><span class="c">[実機モード] 接続先: &lt;ロボットのIP&gt;　ROS_DOMAIN_ID: 30　（シミュレーションに戻すには robot_disconnect）</span></pre>
+<p>この表示が出ていないときは、次のコマンドを 1 回実行し、Terminator を閉じて開き直す。</p>
+<pre>robot_connect &lt;ロボットのIP&gt;</pre>
+<p>Terminator で、指ダンスを起動する。</p>
+<pre>source ~/ros2_ws/install/setup.bash
+ros2 launch finger_dance finger_dance.launch.py</pre>
+<p>次の 2 行が出れば、起動できている。起動すると、ロボットのモータの電源が自動で入る。同時に、デスクトップ画面に検出画面が開く。</p>
+<pre><span class="c">[finger_dance]: 送り先 /cmd_vel（TwistStamped）、前後 最大 0.05 m/s、旋回 最大 1.0 rad/s
+[rosbridge_websocket]: Rosbridge WebSocket server started on port 9091</span></pre>
+
+<div class="row">
+  <figure style="width:50%"><img class="photo" src="img/screen_novnc.png" style="width:100%"><figcaption>図 3-1 デスクトップ画面の接続</figcaption></figure>
+  <figure style="width:34%"><img class="photo" src="img/screen_desktop.png" style="width:100%"><figcaption>図 3-2 Terminator のアイコン</figcaption></figure>
+</div>
+
+<h3>3.5 カメラの映像を送る</h3>
+<p>Chrome の新しいタブで <code>http://localhost:6081/camera.html?port=9091</code> を開く。図 3-3 は、このカメラページの画面である。カメラは「Studio Display のカメラ」、解像度は 640×480、フレームレートは 10 fps を選び、「開始」を押す。初めて開いたときは、カメラの使用を許可するかを聞かれるので、「許可」を押す。</p>
+<p>映像が出て、画面の下の「送信した枚数」が増えていけば、映像がコンテナに届いている。デスクトップ画面に戻ると、検出画面にカメラの映像が出る。図 3-4 は、人差し指を本人から見て左に 31° 傾けたときの検出画面である。検出した手には緑の点が付き、人差し指のときは指の向きに緑の矢印が出る。左上には手の形の判定が出て、人差し指のときは指の向きの角度も出る。検出画面はカメラの映像をそのまま映すので、本人から見て左に傾けた指は、画面では右に傾いて写る。</p>
+
+<figure>
+  <img class="photo" src="img/screen_camera.png" style="width:70%">
+  <figcaption>図 3-3 カメラページ</figcaption>
+</figure>
+<figure>
+  <img class="photo" src="img/screen_rqt.png" style="width:70%">
+  <figcaption>図 3-4 検出画面</figcaption>
+</figure>
+
+<!-- ======================= 4 章 ======================= -->
+<div class="chapter">
+<h2>4 章 指による操作</h2>
+
+<h3>4.1 手の構え方</h3>
+<p>カメラから 50 cm〜1 m ほど離れ、手首まで画面に入るようにする。手のひらをカメラに向け、操作する手だけを画面に入れる。もう一方の手が映っていると、そちらの手を検出して、操作する手を見ないことがある。</p>
+
+<h3>4.2 手の形とロボットの動き</h3>
+<p>表 4-1 は、手の形とロボットの動きの対応である。この章の写真は、本人が鏡で自分の手を見たときの向きにしてある。中指・薬指・小指はしっかり握り込む。半分だけ曲げると「その他の形」と判定されて、ロボットは止まる。親指はどの手の形でも、立てても握ってもよい。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 4-1 手の形とロボットの動き</caption>
+  <thead><tr><th style="width:20%">手の形</th><th class="c" style="width:18%">写真</th><th style="width:20%">検出画面の表示</th><th>ロボットの動き</th></tr></thead>
+  <tr><td>人差し指</td><td><img src="img/point_up_m.jpg" style="width:22mm"></td><td><code>point</code> と角度</td><td>指の向きに合わせて走る（4.3 節）</td></tr>
+  <tr><td>チョキ</td><td><img src="img/peace_m.jpg" style="width:22mm"></td><td><code>peace</code></td><td>その場で左右に小刻みに振る。これを「踊り」と呼ぶ</td></tr>
+  <tr><td>グー</td><td><img src="img/fist_m.jpg" style="width:22mm"></td><td><code>fist</code></td><td>止まる</td></tr>
+  <tr><td>パー</td><td class="c">—</td><td><code>open</code></td><td>止まる</td></tr>
+  <tr><td>手を下ろす</td><td class="c">—</td><td><code>none</code></td><td>止まる</td></tr>
+</table>
+
+<h3>4.3 指の向きとロボットの動き</h3>
+<p>人差し指を立てたときは、指を時計の針のように回して操作する。指だけを曲げるのではなく、手首から手全体を回して、指の付け根から指先までの線を傾ける。表 4-2 は、指の向きとロボットの動きの対応であり、左右は本人から見た向きである。検出画面の角度は、本人から見て左がプラス、右がマイナスになる。</p>
+<p>図 4-1 は、すべての向きとロボットの動きの関係をまとめたものである。図の θ は指の向きの角度、v は前後の速さ、ω は旋回の速さである。真上と真下から 10° 以内では曲がらず、真横から 20° 以内では前後に進まないので、少し大きめに傾けると分かりやすい。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 4-2 指の向きとロボットの動き</caption>
+  <thead><tr><th class="c" style="width:18%">写真</th><th style="width:24%">指の向き</th><th style="width:14%">検出画面</th><th>ロボットの動き</th></tr></thead>
+  <tr><td><img src="img/point_up_m.jpg" style="width:20mm"></td><td>真上</td><td><code>+0deg</code></td><td>まっすぐ前進する（0.05 m/s）</td></tr>
+  <tr><td><img src="img/point_left30_m.jpg" style="width:20mm"></td><td>少し左に傾ける</td><td><code>+30deg</code></td><td>前進しながら左に曲がる</td></tr>
+  <tr><td><img src="img/point_left90_m.jpg" style="width:20mm"></td><td>真横の左</td><td><code>+90deg</code></td><td>その場で左に回る（1.0 rad/s）</td></tr>
+  <tr><td><img src="img/point_right30_m.jpg" style="width:20mm"></td><td>少し右に傾ける</td><td><code>-30deg</code></td><td>前進しながら右に曲がる</td></tr>
+  <tr><td><img src="img/point_right90_m.jpg" style="width:20mm"></td><td>真横の右</td><td><code>-90deg</code></td><td>その場で右に回る</td></tr>
+  <tr><td><img src="img/point_down_m.jpg" style="width:20mm"></td><td>真下</td><td><code>+180deg</code></td><td>まっすぐ後退する</td></tr>
+</table>
+
+<figure>
+  <img src="img/fig_dial.svg" style="width:84%">
+  <figcaption>図 4-1 指の向きとロボットの動き</figcaption>
+</figure>
+
+<h3>4.4 うまく操作するこつ</h3>
+<p>手の形を変えたら、1 秒ほどそのまま止める。ロボットが走り出すのは、同じ手の形を 2 回続けて検出したときであり、手の形がすぐに変わると走り出さない。止まるほうは、グー・パー・手を下ろすのどれでも、すぐに止まる。指はカメラのほうに向けず、画面と平行に向ける。指をカメラに向けると、画像の上で指が短く見えて、曲げていると判定されることがある。検出画面の判定が <code>other</code> になるときは、中指・薬指・小指の握りが甘いことが多い。</p>
+</div>
+
+<!-- ======================= 5 章 ======================= -->
+<div>
+<h2 style="margin-top:8mm">5 章 終了の手順</h2>
+<p>次の順で終了する。</p>
+<ol>
+  <li>カメラページの「停止」を押す。0.5 秒後にロボットが止まる。</li>
+  <li>デスクトップ画面の Terminator で Ctrl + C を押し、指ダンスを止める。ロボットに止まる指令を送ってから、モータの電源を切る。</li>
+  <li>Mac のターミナル（ロボットのノードを動かしているもの）で Ctrl + C を押す。</li>
+  <li>同じターミナルで、ロボットをシャットダウンする。<pre>sudo poweroff</pre></li>
+  <li>Raspberry Pi の緑の LED が消えてから、モータ用の電源スイッチと電源スイッチを切る。</li>
+  <li>必要なら、Mac の Wi-Fi を研究室用ルータに戻す。</li>
+</ol>
+<p>ロボットの Raspberry Pi 3 は、<code>sudo reboot</code> で再起動すると起動しなくなる。再起動するときは、<code>sudo poweroff</code> で止めてから電源スイッチを切り、もう一度入れる。</p>
+
+<!-- ======================= 6 章 ======================= -->
+<h2 style="margin-top:8mm">6 章 turtlesim での確認</h2>
+<p>ロボットを使わずに、画面の中の亀（turtlesim）で指ダンスを確かめられる。ロボットの電源、Wi-Fi の切り替え、ロボットのノードの起動は要らない。3.4 節の手順で Terminator を開き、次のコマンドで起動する。</p>
+<pre>source ~/ros2_ws/install/setup.bash
+ros2 launch finger_dance finger_dance.launch.py turtlesim:=true</pre>
+<p>デスクトップ画面に、亀の画面と検出画面が開く。3.5 節の手順でカメラの映像を送ると、4 章の操作で亀が動く。亀はロボットより速く動くように、前後の速さの最大値を 1.0、旋回の速さの最大値を 1.5 にしている。亀が画面の端に着いたときは、別の Terminator で次のコマンドを実行すると、亀が中央に戻る。</p>
+<pre>ros2 service call /reset std_srvs/srv/Empty</pre>
+</div>
+
+<!-- ======================= 7 章 ======================= -->
+<div class="chapter">
+<h2>7 章 ロボットと検出画面を並べた動画の作り方</h2>
+<p>iPhone で撮ったロボットの動画と、検出画面の動画を、時刻を合わせて左右に並べた 1 本の動画にできる。検出画面は記録しておかないと残らないので、撮影を始める前に記録を始める。</p>
+
+<h3>7.1 検出画面の記録</h3>
+<p>3 章の手順で指ダンスを起動してから、デスクトップ画面で新しい Terminator を開き、記録を始める。記録は研究フォルダの <code>ros2_ws/bags/</code> に、日付と時刻の名前で残る。</p>
+<pre>ros2 bag record -o ~/ros2_ws/bags/dance_$(date +%Y%m%d_%H%M%S) /finger_image/compressed /finger_gesture /cmd_vel</pre>
+<p>記録を始めたら、iPhone でロボットを撮りながら、指で操作する。撮り終わったら、記録の Terminator で Ctrl + C を押す。</p>
+
+<h3>7.2 記録の動画への変換</h3>
+<p>同じ Terminator で、記録を MP4 の動画にする。<code>dance_20261026_112114</code> の部分は、7.1 節で作られたフォルダの名前に置き換える。</p>
+<pre>python3 ~/ros2_ws/tools/bag_to_mp4.py ~/ros2_ws/bags/dance_20261026_112114</pre>
+<p><code>ros2_ws/bags/</code> に、<code>dance_20261026_112114_finger.mp4</code> ができる。この動画の下には、その時刻と、ロボットに送った速度の指令が出る。</p>
+
+<h3>7.3 2 つの動画を並べる</h3>
+<p>iPhone の動画を AirDrop などで Mac に送り、研究フォルダ <code>chibariyo-dance-mimic</code> に入れる。Mac のターミナルで次を実行する。<code>IMG_1235.MOV</code> は iPhone の動画の名前に、最後のファイル名は 7.2 節でできた動画の名前に置き換える。</p>
+<pre>cd chibariyo-dance-mimic
+tools/combine.sh IMG_1235.MOV ros2_ws/bags/dance_20261026_112114_finger.mp4</pre>
+<p>研究フォルダに、左がロボット、右が検出画面の <code>IMG_1235_combined.mp4</code> ができる。時刻は iPhone の撮影を始めた時刻で合わせる。2 つの動画が 0.5 秒ずれて見えるときは、ファイル名の後ろに補正の秒数を付けて実行し直す。検出画面が遅れて見えるときはプラス、早く見えるときはマイナスにする。</p>
+<pre>tools/combine.sh IMG_1235.MOV ros2_ws/bags/dance_20261026_112114_finger.mp4 0.5</pre>
+<p>動画の一部だけを切り出すときは、次のように始まり（<code>-ss</code>）と長さ（<code>-t</code>）を秒で指定する。この例は、30 秒から 18 秒間を切り出す。</p>
+<pre>ffmpeg -ss 30 -i IMG_1235_combined.mp4 -t 18 -c:v libx264 -crf 23 -c:a aac IMG_1235_part.mp4</pre>
+</div>
+
+<!-- ======================= 8 章 ======================= -->
+<div class="chapter">
+<h2>8 章 初めて使うときの準備</h2>
+
+<h3>8.1 コンテナを作る</h3>
+<p>Mac に Docker Desktop を入れて起動し、ターミナルで次を実行する。コンテナのイメージを作り、コンテナ finger_dance を起動する。ダウンロードにインターネットが要り、初回は数分かかる。</p>
+<pre>cd chibariyo-dance-mimic/docker
+docker compose up -d --build</pre>
+<p>Mac を起動し直した後などでコンテナが止まっているときは、同じフォルダで <code>docker compose up -d</code> を実行すると、コンテナが起動する。</p>
+
+<h3>8.2 指ダンスのビルド</h3>
+<p>Chrome で <code>http://localhost:6081</code> を開き、Terminator で次を実行する。プログラムのファイルを書き換えたときは、ビルドし直さなくてよい。ファイルを足したときや <code>setup.py</code> を変えたときは、ビルドし直す。</p>
+<pre>cd ~/ros2_ws && colcon build --symlink-install</pre>
+<p>続けて、コンテナがロボットにつながるよう設定する。</p>
+<pre>robot_connect &lt;ロボットのIP&gt;</pre>
+
+<h3>8.3 Mac の Wi-Fi の設定</h3>
+<p>Mac の「システム設定」→「Wi-Fi」で、研究室用ルータの右の「…」を押し、「自動接続」を切る。このようにすることで、操作の途中で Mac が研究室用ルータにつなぎ直して、ロボットとの通信が切れることを防げる。</p>
+
+<h3>8.4 ロボットの SD カード</h3>
+<p>ロボットの SD カードを作り直すときは、研究フォルダの <code>chibamouse/作り方.md</code> の手順で行う。</p>
+</div>
+
+<!-- ======================= 9 章 ======================= -->
+<div class="chapter">
+<h2>9 章 うまくいかないとき</h2>
+<p>表 9-1 は、よく起きることと、その確かめ方である。</p>
+
+<table>
+  <caption>表 9-1 よく起きることと確かめ方</caption>
+  <thead><tr><th style="width:32%">起きること</th><th>確かめること</th></tr></thead>
+  <tr><td>ロボットにログインできない</td><td>Mac の Wi-Fi が &lt;研究用ルータのSSID&gt; になっているか。ロボットの電源を入れてから 43 秒以上たっているか</td></tr>
+  <tr><td><code>http://localhost:6081</code> が開かない</td><td>コンテナが止まっている。8.1 節の <code>docker compose up -d</code> を実行する</td></tr>
+  <tr><td>カメラページの「送信した枚数」が増えない</td><td>指ダンスを起動しているか（3.4 節）。アドレスの最後に <code>?port=9091</code> を付けたか。カメラの使用を許可したか</td></tr>
+  <tr><td>検出画面に何も出ない</td><td>カメラページで「開始」を押したか。検出画面の左上のトピックが <code>/finger_image</code> になっているか</td></tr>
+  <tr><td>手が映っているのに <code>none</code> のまま</td><td>手首まで画面に入っているか。手が画面の端で切れていないか。部屋が暗くないか</td></tr>
+  <tr><td>人差し指なのに <code>other</code> や <code>peace</code> になる</td><td>中指・薬指・小指を深く握り込む。指をカメラに向けず、画面と平行に向ける</td></tr>
+  <tr><td>判定は合っているのにロボットが動かない</td><td>モータ用の電源スイッチ。ロボットのノードが動いているか（3.3 節）。Terminator の 1 行目に <code>[実機モード]</code> が出ているか</td></tr>
+  <tr><td>操作の途中でロボットが反応しなくなった</td><td>Mac の Wi-Fi が研究室用ルータに切り替わっていないか（8.3 節）。ロボットの電池が減っていないか</td></tr>
+  <tr><td>左右が逆に感じる</td><td>起動するときに <code>mirror:=true</code> を付ける。左右の向きが入れ替わる</td></tr>
+  <tr><td>ロボットが起動しない（赤の LED だけ点く）</td><td><code>sudo reboot</code> をした後は起動しない。電源スイッチを切って、もう一度入れる</td></tr>
+</table>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>finger_dance</name>
+  <version>0.1.0</version>
+  <description>MediaPipe で検出した指の形と向き、または人のダンスに合わせて、Raspberry Pi Mouse（turtlesim、チバリヨカー）を動かす</description>
+  <maintainer email="ba2vwbus13@users.noreply.github.com">ba2vwbus13</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>rosbridge_server</exec_depend>
+  <exec_depend>turtlesim</exec_depend>
+  <exec_depend>rqt_image_view</exec_depend>
+  <exec_depend>raspimouse_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

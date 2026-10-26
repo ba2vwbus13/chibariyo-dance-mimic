@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>指ダンス 設計書</title>
+<link rel="stylesheet" href="doc.css">
+</head>
+<body>
+
+<h1>指ダンス 設計書</h1>
+<div class="subtitle">指の動きで Raspberry Pi Mouse を走らせる・踊らせる仕組み</div>
+
+<h3>目次</h3>
+<ol class="toc">
+  <li>システムの概要</li>
+  <li>システムの構成</li>
+  <li>データの流れ</li>
+  <li>手の検出と手の形の判定</li>
+  <li>速度の指令への変換</li>
+  <li>ロボットの構成</li>
+  <li>プログラムとファイルの一覧</li>
+  <li>パラメータ</li>
+  <li>設計上の考慮点</li>
+</ol>
+
+<!-- ======================= 1 章 ======================= -->
+<h2 style="margin-top:8mm">1 章 システムの概要</h2>
+
+<h3>1.1 指ダンスの働き</h3>
+<p>指ダンスは、カメラに映った人の手の形と人差し指の向きを読み取り、それに合わせてロボットを走らせたり、その場で回したり、左右に小刻みに振って踊らせたりするシステムである。ロボットには Raspberry Pi Mouse V3 を使い、chibamouse1 という名前を付けている。この資料では、これを「ロボット」と呼ぶ。手の形を読み取る処理は、ロボットではなく Mac Studio（以下「Mac」）で行い、結果として求めた速度の指令だけを Wi-Fi でロボットに送る。</p>
+<p>図 1-1 は、人からロボットまでの流れを示したものである。人がカメラの前で手の形を見せると、Mac が映像から手を検出し、手の形を判定して、速度の指令を作る。ロボットは、受け取った速度の指令どおりに左右の車輪を回す。図 1-2 は、使っているロボットの写真である。</p>
+
+<figure>
+  <img src="img/fig_overview.svg" style="width:96%">
+  <figcaption>図 1-1 指ダンスの全体の流れ</figcaption>
+</figure>
+<figure>
+  <div class="row">
+    <img class="photo" src="img/robot_side.jpg" style="width:48%">
+    <img class="photo" src="img/robot_desk.jpg" style="width:48%">
+  </div>
+  <figcaption>図 1-2 ロボット（Raspberry Pi Mouse V3）</figcaption>
+</figure>
+
+<h3>1.2 手の形と動きの対応</h3>
+<p>指ダンスが読み取る手の形は、人差し指・チョキ・グー・パーの 4 つと、それ以外の形、手が映っていない状態の、合わせて 6 つである。この資料では、これらをまとめて「手の形」と呼ぶ。表 1-1 は、手の形とロボットの動きの対応をまとめたものである。ロボットが動くのは人差し指とチョキのときだけであり、そのほかの手の形ではロボットは止まる。人差し指のときは、指の向きによって動きが変わる。指の向きと動きの関係は 5 章で説明する。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 1-1 手の形とロボットの動き</caption>
+  <thead><tr><th style="width:22%">手の形</th><th class="c" style="width:16%">写真</th><th>ロボットの動き</th></tr></thead>
+  <tr><td>人差し指</td><td><img src="img/point_up.jpg" style="width:22mm"></td><td>指の向きに合わせて走る。上で前進、左右に傾けるとその向きに旋回、下で後退</td></tr>
+  <tr><td>チョキ</td><td><img src="img/peace.jpg" style="width:22mm"></td><td>その場で左右に小刻みに振る。これを「踊り」と呼ぶ</td></tr>
+  <tr><td>グー</td><td><img src="img/fist.jpg" style="width:22mm"></td><td>止まる</td></tr>
+  <tr><td>パー・その他・手なし</td><td class="c">—</td><td>止まる</td></tr>
+</table>
+
+<!-- ======================= 2 章 ======================= -->
+<div class="chapter">
+<h2>2 章 システムの構成</h2>
+
+<h3>2.1 機器とネットワーク</h3>
+<p>指ダンスは、Mac、カメラ、研究用ルータ、ロボットの 4 つの機器で動く。表 2-1 は、それぞれの機器の役割を示したものである。カメラは Mac につないだ Studio Display に付いているものを使う。研究用ルータは、Mac とロボットをつなぐための Wi-Fi ルータであり、インターネットにはつながっていない。</p>
+<p>図 2-1 は、機器のつながりを示したものである。Mac は有線で学校の LAN につながり、インターネットはこちらから使う。Mac の Wi-Fi は研究用ルータにつなぎ、ロボットも同じ研究用ルータに Wi-Fi でつながる。ロボットの Raspberry Pi 3 は 2.4 GHz の Wi-Fi にしかつながらないので、研究用ルータは 2.4 GHz で使う。ロボットの IP アドレスは、研究用ルータの設定で &lt;ロボットのIP&gt; に固定している。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 2-1 機器の役割</caption>
+  <thead><tr><th style="width:20%">機器</th><th style="width:30%">製品</th><th>役割</th></tr></thead>
+  <tr><td>Mac</td><td>Mac Studio（Apple M1 Max、macOS）</td><td>カメラの映像から手を検出し、速度の指令を作ってロボットに送る</td></tr>
+  <tr><td>カメラ</td><td>Studio Display のカメラ</td><td>人の手を写す。映像はブラウザで受け取る</td></tr>
+  <tr><td>研究用ルータ</td><td>BUFFALO の Wi-Fi ルータ（SSID &lt;研究用ルータのSSID&gt;）</td><td>Mac とロボットを 2.4 GHz の Wi-Fi でつなぐ</td></tr>
+  <tr><td>ロボット</td><td>Raspberry Pi Mouse V3 ＋ Raspberry Pi 3 Model B</td><td>速度の指令を受け取り、左右の車輪を回す</td></tr>
+</table>
+
+<figure>
+  <img src="img/fig_network.svg" style="width:88%">
+  <figcaption>図 2-1 機器とネットワーク</figcaption>
+</figure>
+
+<h3>2.2 ソフトウェアの構成</h3>
+<p>Mac では、Docker のコンテナの中で ROS 2 Jazzy を動かす。この資料では、このコンテナを「コンテナ」と呼ぶ。Docker Desktop のコンテナからは Mac のカメラを直接使えないので、カメラの映像はブラウザで受け取り、ブラウザからコンテナへ送る。このために使うページ <code>camera.html</code> を、この資料では「カメラページ」と呼ぶ。ロボットの Raspberry Pi 3 では、Ubuntu 24.04 の上で ROS 2 Jazzy を動かす。</p>
+<p>図 2-2 は、Mac とロボットで動くソフトウェアを示したものである。ROS 2 では、1 つの働きをする 1 つのプログラムを「ノード」と呼び、ノードどうしは「トピック」という名前の付いた通り道でデータをやり取りする。コンテナでは、カメラページから映像を受け取る <code>rosbridge_websocket</code>、手を検出する <code>finger_detect</code>、速度の指令を作る <code>finger_dance</code>、検出の結果を表示する <code>rqt_image_view</code> の 4 つのノードが動く。ロボットでは、モータと光センサを扱う <code>raspimouse</code> ノードが動く。表 2-2 は、使っているソフトウェアとその版を示したものである。</p>
+
+<figure>
+  <img src="img/fig_software.svg" style="width:92%">
+  <figcaption>図 2-2 ソフトウェアの構成</figcaption>
+</figure>
+
+<table>
+  <caption>表 2-2 使っているソフトウェア</caption>
+  <thead><tr><th style="width:30%">ソフトウェア</th><th style="width:22%">版</th><th>使う場所と用途</th></tr></thead>
+  <tr><td>ROS 2</td><td>Jazzy</td><td>コンテナとロボット。ノードどうしの通信</td></tr>
+  <tr><td>Ubuntu</td><td>24.04</td><td>コンテナとロボットの OS</td></tr>
+  <tr><td>rmw_zenoh</td><td>Jazzy 用</td><td>コンテナとロボットの間の ROS 2 の通信方式</td></tr>
+  <tr><td>MediaPipe</td><td>1.1.1</td><td>コンテナ。手の検出（Hand Landmarker）</td></tr>
+  <tr><td>OpenCV</td><td>4.11</td><td>コンテナ。画像の読み込みと描画</td></tr>
+  <tr><td>NumPy</td><td>1.26.4</td><td>コンテナ。画像のデータ。2 系は OpenCV と合わないので 1 系を使う</td></tr>
+  <tr><td>コンテナの元のイメージ</td><td>tiryoh/ros2-desktop-vnc:jazzy</td><td>コンテナ。ROS 2 とデスクトップ画面。版はダイジェストで固定している</td></tr>
+  <tr><td>Docker Desktop</td><td>Docker Engine 29.8</td><td>Mac。コンテナを動かす</td></tr>
+  <tr><td>Chrome</td><td>—</td><td>Mac。カメラページを開く</td></tr>
+</table>
+
+<h3>2.3 コンテナとロボットの間の通信</h3>
+
+<h4>標準の通信方式が届かない理由</h4>
+<p>ROS 2 の標準の通信方式は、起動したノードが「誰かいますか」という知らせを同じネットワーク全体に流し、返事をくれた相手と通信を始める。ところが、Docker Desktop のコンテナは、Mac の中に作られた Linux の仮想マシンの中で動いており、コンテナの IP アドレスは 172.17.0.x という、Mac の外からは見えない番号になる。図 2-3 は、このときの様子を示したものである。コンテナが流した「誰かいますか」は仮想マシンの外へ出ないので、ロボットはコンテナを見つけられない。また、仮にロボットが返事をしようとしても、172.17.0.x にはロボットから届かない。</p>
+
+<figure>
+  <img src="img/fig_dds_blocked.svg" style="width:86%">
+  <figcaption>図 2-3 標準の通信方式でロボットに届かない様子</figcaption>
+</figure>
+
+<h4>Zenoh ルータによる接続</h4>
+<p>仮想マシンの中のコンテナからでも、外にある決まった IP アドレスへ自分からつなぎに行くことはできる。従って、コンテナとロボットの間は rmw_zenoh という通信方式でつなぐ。rmw_zenoh では、コンテナとロボットにそれぞれ「Zenoh ルータ」という中継のプログラムを置く。図 2-4 は、この接続を示したものである。ロボットの Zenoh ルータは、TCP の 7447 番ポートで待っている。コンテナの Zenoh ルータは、ロボットの IP アドレスと 7447 番を指定して、自分からロボットにつなぎに行く。一度つながると、この 1 本の接続で、指令もセンサの値も両方向に流れる。</p>
+<p>コンテナの中の 4 つのノードは、同じコンテナの中の Zenoh ルータにだけつながり、ロボットに直接はつながらない。このようにすることで、ノードどうしのデータは、まずコンテナの Zenoh ルータに集まる。そのうえで、ロボットに受け取る相手がいるデータだけが、Wi-Fi を通ってロボットに送られる。</p>
+
+<figure>
+  <img src="img/fig_zenoh_route.svg" style="width:90%">
+  <figcaption>図 2-4 Zenoh ルータによる接続</figcaption>
+</figure>
+
+<h4>Wi-Fi を通るデータ</h4>
+<p>Zenoh ルータは、そのデータを受け取るノードがいる方向にだけデータを送る。ロボットで受け取るのは <code>raspimouse</code> ノードだけであり、<code>raspimouse</code> ノードが受け取るのは速度の指令とモータの電源の指示である。従って、表 2-3 のとおり、Wi-Fi を通るのはこの 2 つだけになる。例えば、検出画面の画像は 1 枚約 900 KB で、1 秒に 10 枚流すと 1 秒に約 9 MB になり、Raspberry Pi 3 の 2.4 GHz の Wi-Fi で送れる量を大きく超える。しかし、この画像を流す <code>finger_detect</code> と受け取る <code>rqt_image_view</code> は、どちらもコンテナの中にいる。図 2-4 の黄土色の矢印のとおり、画像は <code>finger_detect</code> からコンテナの Zenoh ルータを通って <code>rqt_image_view</code> に渡り、ロボットに受け取るノードがいないので、ロボットへは送られない。従って、Wi-Fi の負担にはならない。カメラの映像と手の形・指の向きも、同じようにコンテナの中だけで受け渡される。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 2-3 データと Wi-Fi の関係</caption>
+  <thead><tr><th style="width:22%">データ</th><th style="width:26%">トピック</th><th style="width:32%">大きさの目安</th><th class="c">Wi-Fi</th></tr></thead>
+  <tr><td>カメラの映像</td><td><code>/image_raw/compressed</code></td><td>1 枚数十 KB、1 秒に最大 10 枚</td><td class="c">通らない</td></tr>
+  <tr><td>検出画面の画像</td><td><code>/finger_image</code></td><td>1 枚約 900 KB、1 秒に最大 10 枚</td><td class="c">通らない</td></tr>
+  <tr><td>手の形と指の向き</td><td><code>/finger_gesture</code></td><td>1 回約 50 バイト、1 秒に最大 10 回</td><td class="c">通らない</td></tr>
+  <tr><td>速度の指令</td><td><code>/cmd_vel</code></td><td>1 回数十バイト、1 秒に 10 回</td><td class="c">通る</td></tr>
+  <tr><td>モータの電源の指示</td><td><code>/motor_power</code></td><td>起動と終了のときに 1 回ずつ</td><td class="c">通る</td></tr>
+</table>
+
+<h4>robot_connect と ROS_DOMAIN_ID</h4>
+<p>コンテナの Zenoh ルータを起動してロボットにつなぐ作業は、コンテナで <code>robot_connect &lt;ロボットのIP&gt;</code> を実行すると、まとめて行われる。図 2-5 の上の段は、このコマンドが行う 4 つの処理である。つなぎ先をファイル <code>~/.robot_ip</code> に保存しておくので、新しく開いた端末でも、同じつなぎ先と通信方式が自動で使われる。</p>
+<p>ROS 2 では、ROS_DOMAIN_ID という番号が同じノードどうしだけが通信する。図 2-5 の下の段は、その例である。指ダンスでは、コンテナとロボットの ROS_DOMAIN_ID をどちらも 30 にしている。このようにすることで、同じ Mac やネットワークで ROS_DOMAIN_ID 0 などのほかのノードが動いていても、指令が混ざらない。</p>
+
+<figure>
+  <img src="img/fig_connect.svg" style="width:90%">
+  <figcaption>図 2-5 robot_connect の働きと ROS_DOMAIN_ID</figcaption>
+</figure>
+</div>
+
+<!-- ======================= 3 章 ======================= -->
+<div class="chapter">
+<h2>3 章 データの流れ</h2>
+
+<h3>3.1 ノードとトピック</h3>
+<p>図 3-1 は、ノードとトピックのつながりを示したものである。四角がノード、矢印がトピックであり、矢印の向きにデータが流れる。カメラページは、カメラの映像を JPEG にして、WebSocket で <code>rosbridge_websocket</code> に送る。<code>rosbridge_websocket</code> は、それを <code>/image_raw/compressed</code> というトピックに流す。<code>finger_detect</code> はその画像から手を検出し、手の形と人差し指の向きを <code>/finger_gesture</code> に流す。<code>finger_dance</code> はそれを受け取って速度の指令を作り、<code>/cmd_vel</code> でロボットの <code>raspimouse</code> ノードに送る。</p>
+<p><code>finger_detect</code> は、手の点と判定の結果を描いた画像も作る。この画像は、表示用に非圧縮の <code>/finger_image</code> と、記録用に JPEG の <code>/finger_image/compressed</code> の 2 つのトピックに流す。この資料では、<code>rqt_image_view</code> がこの画像を表示する画面を「検出画面」と呼ぶ。</p>
+
+<figure>
+  <img src="img/fig_nodes.svg" style="width:92%">
+  <figcaption>図 3-1 ノードとトピック</figcaption>
+</figure>
+
+<h3>3.2 トピック一覧</h3>
+<p>表 3-1 は、指ダンスで使っているトピックの一覧である。「流す」はそのトピックにデータを出すノード、「聞く」はそのデータを受け取るノードである。<code>/finger_gesture</code> は、文字列 1 本だけを持つ一番簡単な型 String に、JSON という書き方で手の形と指の向きを詰めたものである。例えば、人差し指を本人から見て左に 23.5° 傾けたときは、<code>{"shape": "point", "angle": 23.5, "score": 0.97}</code> となる。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 3-1 指ダンスで使っているトピック</caption>
+  <thead><tr><th style="width:24%">トピック</th><th style="width:19%">型</th><th style="width:15%">流す</th><th style="width:15%">聞く</th><th>中身</th></tr></thead>
+  <tr><td><code>/image_raw/compressed</code></td><td>CompressedImage</td><td>rosbridge</td><td>finger_detect</td><td>カメラの映像。640 × 480、JPEG。1 秒の枚数はカメラページで選ぶ（通常 10 枚）</td></tr>
+  <tr><td><code>/finger_gesture</code></td><td>String（JSON）</td><td>finger_detect</td><td>finger_dance</td><td>手の形（shape）、指の向き（angle、度）、確からしさ（score）</td></tr>
+  <tr><td><code>/finger_image</code></td><td>Image</td><td>finger_detect</td><td>rqt_image_view</td><td>手の点と判定の結果を描いた画像。非圧縮</td></tr>
+  <tr><td><code>/finger_image/compressed</code></td><td>CompressedImage</td><td>finger_detect</td><td>ros2 bag</td><td>上と同じ画像の JPEG。動画を作るときに記録する</td></tr>
+  <tr><td><code>/cmd_vel</code></td><td>TwistStamped</td><td>finger_dance</td><td>raspimouse</td><td>速度の指令。前後の速さ（linear.x）と旋回の速さ（angular.z）。0.1 秒ごと</td></tr>
+  <tr><td><code>/motor_power</code></td><td>SetBool（サービス）</td><td>finger_dance</td><td>raspimouse</td><td>モータの電源を入れる・切る。起動したときと終了するときに使う</td></tr>
+</table>
+</div>
+
+<!-- ======================= 4 章 ======================= -->
+<div class="chapter">
+<h2>4 章 手の検出と手の形の判定</h2>
+
+<h3>4.1 処理の流れ</h3>
+<p>手の検出と手の形の判定は、<code>finger_detect.py</code> と <code>hand_shape.py</code> が行う。<code>finger_detect.py</code> は、画像が届くたびに次の順で処理する。</p>
+<ol>
+  <li>JPEG の画像を元に戻し、MediaPipe が使う色の並び（RGB）に変える。</li>
+  <li>MediaPipe の Hand Landmarker で、手の 21 か所の点の位置を求める。これを「手の検出」と呼ぶ。</li>
+  <li>21 点のうち手首と 4 本の指の点から、手の形を判定する（4.3 節、4.4 節）。</li>
+  <li>人差し指の付け根から指先への向きを、角度で求める（4.5 節）。</li>
+  <li>手の形と指の向きを <code>/finger_gesture</code> に流し、点と判定の結果を描いた画像を <code>/finger_image</code> などに流す。</li>
+</ol>
+<p>Hand Landmarker は、動画用の VIDEO という使い方にしている。VIDEO では、前の画像で見つけた手の位置を手がかりにして次の画像の手を追いかける。このようにすることで、1 枚の処理時間は、手を追いかけている間は約 70 ms となり、毎回画像全体から手を探し直す場合の約 180 ms より短くなる。受け取る画像は「最新の 1 枚だけ」としており、処理が間に合わないときは古い画像を捨てるので、遅れがたまらない。</p>
+
+<h3>4.2 手の 21 点</h3>
+<p>Hand Landmarker は、手首と指の関節・指先の、合わせて 21 か所の点を出す。点には 0 から 20 までの番号が決まっている。図 4-1 は、点の番号と、指ダンスが使う点を示したものである。手の形の判定には、手首（0）、4 本の指の第 2 関節（6・10・14・18）、指先（8・12・16・20）を使い、指の向きには人差し指の付け根（5）と指先（8）を使う。点の位置は画像の横・縦に対する割合（0〜1）で出てくるので、横は 640、縦は 480 を掛けて画素の単位に直してから、距離と角度を計算する。</p>
+
+<figure>
+  <img src="img/fig_hand21.svg" style="width:68%">
+  <figcaption>図 4-1 手の 21 点と指ダンスが使う点</figcaption>
+</figure>
+
+<h3>4.3 指を伸ばしているかの判定</h3>
+<p>指を伸ばしていると、指先は手首から遠くなり、曲げると、指先は手のひらの側に戻って手首に近くなる。従って、手首から指先までの距離を、手首から第 2 関節までの距離と比べ、その比が 1.1 より大きければ「伸ばしている」と判定する。式で書くと次のとおりである。</p>
+<p class="formula">（手首から指先までの距離）÷（手首から第 2 関節までの距離）＞ 1.1　→　伸ばしている</p>
+<p>図 4-2 は、伸ばしている指と曲げている指で、この比を計算した例である。伸ばしている指では 260 ÷ 180 = 1.44 となり、曲げている指では 122 ÷ 160 = 0.76 となる。このように距離の比で判定することで、手を横や下に向けても同じように判定できる。ただし、指をカメラのほうに向けると、画像の上では指が短く見えるので、伸ばしていても比が小さくなり、曲げていると判定されることがある。</p>
+
+<figure>
+  <img src="img/fig_extension.svg" style="width:66%">
+  <figcaption>図 4-2 指を伸ばしているかの判定</figcaption>
+</figure>
+
+<h3>4.4 手の形の判定</h3>
+<p>人差し指・中指・薬指・小指の 4 本について、伸ばしているかどうかを 4.3 節の方法で調べ、その組み合わせで手の形を決める。表 4-1 は、指の組み合わせと手の形の対応である。親指は、伸ばしているかどうかの判定が手の向きによって変わりやすいので、使わない。表 4-1 の写真は、実際に <code>finger_detect</code> が手の点を検出した結果を描いたものであり、緑の線が検出した手の骨組み、太い矢印が人差し指の向きである。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 4-1 伸ばしている指と手の形</caption>
+  <thead><tr><th style="width:15%">人差し指</th><th style="width:12%">中指</th><th style="width:12%">薬指</th><th style="width:12%">小指</th><th style="width:20%">手の形</th><th class="c">写真</th></tr></thead>
+  <tr><td class="c">伸ばす</td><td class="c">曲げる</td><td class="c">曲げる</td><td class="c">曲げる</td><td>人差し指（point）</td><td><img src="img/point_up.jpg" style="width:22mm"></td></tr>
+  <tr><td class="c">伸ばす</td><td class="c">伸ばす</td><td class="c">曲げる</td><td class="c">曲げる</td><td>チョキ（peace）</td><td><img src="img/peace.jpg" style="width:22mm"></td></tr>
+  <tr><td class="c">曲げる</td><td class="c">曲げる</td><td class="c">曲げる</td><td class="c">曲げる</td><td>グー（fist）</td><td><img src="img/fist.jpg" style="width:22mm"></td></tr>
+  <tr><td class="c">伸ばす</td><td class="c">伸ばす</td><td class="c">伸ばす</td><td class="c">伸ばす</td><td>パー（open）</td><td class="c">—</td></tr>
+  <tr><td colspan="4" class="c">上のどれでもない</td><td>その他（other）</td><td class="c">—</td></tr>
+  <tr><td colspan="4" class="c">手が見つからない</td><td>手なし（none）</td><td class="c">—</td></tr>
+</table>
+
+<h3>4.5 指の向き</h3>
+<p>人差し指の向きは、人差し指の付け根（5）から指先（8）へ向かう線の向きを、真上を 0° として角度で表す。この資料では、この角度を「指の向き」と呼び、θ で表す。図 4-3 は、指の向きの決め方を示したものである。θ は、本人から見て左に傾けるとプラス、右に傾けるとマイナスになり、真横の左が +90°、真横の右が −90°、真下が ±180° である。</p>
+<p>カメラの画像には、本人の左が画像の右に写る。従って、画像の上での付け根から指先への横のずれを vx（右がプラス）、縦のずれを vy（下がプラス）とすると、θ は次の式で求まる。この式では、画像の右へのずれがプラスの角度になり、それが本人から見た左に当たる。</p>
+<p class="formula">θ = atan2( vx , −vy )</p>
+<p>鏡に映したように左右が反転した映像を使う場合や、ロボットを本人と向かい合わせて鏡のように動かしたい場合は、パラメータ <code>mirror</code> を true にして、θ の符号を逆にする。</p>
+
+<figure>
+  <img src="img/fig_angle.svg" style="width:78%">
+  <figcaption>図 4-3 指の向きの決め方</figcaption>
+</figure>
+</div>
+
+<!-- ======================= 5 章 ======================= -->
+<div class="chapter">
+<h2>5 章 速度の指令への変換</h2>
+
+<h3>5.1 速度の指令</h3>
+<p>速度の指令は、<code>finger_dance.py</code> と <code>mapping.py</code> が作る。速度の指令は、前後の速さ v と旋回の速さ ω の 2 つの数でできている。v の単位は m/s で、前進がプラスである。ω の単位は rad/s で、上から見て左回り（反時計回り）がプラスである。ロボットは 2 つの車輪で走るので、横には動けない。従って、速度の指令はこの 2 つだけで足りる。<code>finger_dance</code> は、0.1 秒ごとに、その時点の手の形から速度の指令を決めて <code>/cmd_vel</code> に流す。</p>
+
+<h3>5.2 指の向きから速度への変換</h3>
+<p>手の形が人差し指のときは、指の向き θ をジョイスティックのように使い、次の式で v と ω を決める。0.05 m/s と 1.0 rad/s は、それぞれの最大値である。</p>
+<p class="formula">v = 0.05 × cos θ　[m/s]　　　ω = 1.0 × sin θ　[rad/s]</p>
+<p>このようにすることで、指を真上に向けると v が最大の前進になり、傾けるほど前進が遅くなって旋回が速くなる。真横に向けると、その場で回る。さらに、まっすぐ進みたいときに少しの傾きで曲がらないよう、真上と真下から ±10° 以内では ω を 0 にする。また、その場で回りたいときに少しの傾きで前後に動かないよう、真横から ±20° 以内では v を 0 にする。</p>
+<p>図 5-1 は、指の向きとロボットの動きの関係を、指の付け根を中心にした円で示したものである。円の上が指の真上の向き、左が本人から見て左の向きに当たる。表 5-1 は、代表的な指の向きで、v と ω が実際にいくつになるかを示したものである。</p>
+
+<figure>
+  <img src="img/fig_dial.svg" style="width:84%">
+  <figcaption>図 5-1 指の向きとロボットの動き</figcaption>
+</figure>
+
+<table style="break-inside:avoid">
+  <caption>表 5-1 指の向きと速度の指令の値</caption>
+  <thead><tr><th style="width:24%">指の向き θ</th><th class="c" style="width:18%">v [m/s]</th><th class="c" style="width:18%">ω [rad/s]</th><th>ロボットの動き</th></tr></thead>
+  <tr><td>0°（真上）</td><td class="c">+0.050</td><td class="c">0</td><td>まっすぐ前進</td></tr>
+  <tr><td>+30°（左に傾ける）</td><td class="c">+0.043</td><td class="c">+0.50</td><td>前進しながら左に曲がる</td></tr>
+  <tr><td>+90°（真横の左）</td><td class="c">0</td><td class="c">+1.00</td><td>その場で左に回る</td></tr>
+  <tr><td>−30°（右に傾ける）</td><td class="c">+0.043</td><td class="c">−0.50</td><td>前進しながら右に曲がる</td></tr>
+  <tr><td>−90°（真横の右）</td><td class="c">0</td><td class="c">−1.00</td><td>その場で右に回る</td></tr>
+  <tr><td>+150°（左下）</td><td class="c">−0.043</td><td class="c">+0.50</td><td>後退しながら左に曲がる</td></tr>
+  <tr><td>±180°（真下）</td><td class="c">−0.050</td><td class="c">0</td><td>まっすぐ後退</td></tr>
+</table>
+
+<h3>5.3 指の向きをなめらかにする処理</h3>
+<p>検出した点の位置は画像ごとに少しずつ揺れるので、指の向きもそのまま使うと揺れる。従って、新しい指の向きと、それまでの指の向きを半分ずつ混ぜて使う。このとき、角度のまま平均すると、真下の付近で +179° と −179° を平均して 0° になってしまう。そこで、角度を向きの矢印（sin θ と cos θ の組）に直してから混ぜ、混ぜた矢印の向きを角度に戻す。混ぜる割合はパラメータ <code>smoothing</code> で決めており、0.5 である。</p>
+
+<h3>5.4 踊り</h3>
+<p>手の形がチョキのときは、v を 0 にし、ω を +1.0 rad/s と −1.0 rad/s に 0.4 秒ごとに切り替える。図 5-2 は、踊り始めてからの ω と、ロボットの向きの変わり方を示したものである。最初の 0.2 秒だけは半分の長さにしており、このようにすることで、ロボットの向きは踊り始めたときの向きを中心に、左右に約 11.5° ずつ振れる。1 回の振れ幅は、1.0 rad/s × 0.2 s = 0.2 rad であり、これが約 11.5° に当たる。</p>
+
+<figure>
+  <img src="img/fig_dance.svg" style="width:80%">
+  <figcaption>図 5-2 踊りの旋回の速さとロボットの向き</figcaption>
+</figure>
+
+<h3>5.5 走る・踊る・止まるの切り替え</h3>
+<p><code>finger_dance</code> は、ロボットの動きを「停止」「走る」「踊る」の 3 つの状態で管理する。図 5-3 は、状態の切り替わり方を示したものである。走り出す状態へ移るときは、同じ手の形を 2 回続けて受け取ったときに切り替える。これは、検出が一瞬だけ誤ったときにロボットが動き出さないようにするためである。一方、止まる状態へは、グー・パー・その他・手なしを 1 回受け取っただけですぐに切り替える。また、<code>/finger_gesture</code> が 0.5 秒届かないときも止まる。これは、カメラページを止めたときや、<code>finger_detect</code> が止まったときに、ロボットが最後の指令のまま走り続けないようにするためである。</p>
+
+<figure>
+  <img src="img/fig_states.svg" style="width:72%">
+  <figcaption>図 5-3 走る・踊る・止まるの切り替え</figcaption>
+</figure>
+
+<h3>5.6 起動と終了の処理</h3>
+<p><code>finger_dance</code> は、起動すると <code>/motor_power</code> でロボットのモータの電源を入れる。終了するときは、v と ω が 0 の指令を送ってから、モータの電源を切る。ROS 2 の標準の終了処理では、Ctrl + C を押した後に指令を送れないので、終了処理を自分で行う設定（<code>SignalHandlerOptions.NO</code>）で起動している。</p>
+</div>
+
+<!-- ======================= 6 章 ======================= -->
+<div class="chapter">
+<h2>6 章 ロボットの構成</h2>
+
+<h3>6.1 ロボットのソフトウェア</h3>
+<p>ロボットの Raspberry Pi 3 には、Ubuntu 24.04、ROS 2 Jazzy、rmw_zenoh、Raspberry Pi Mouse のドライバ rtmouse、<code>raspimouse</code> ノードが入っている。表 6-1 は、ロボットで使う設定をまとめたものである。電源を入れると、ドライバと Zenoh ルータは自動で起動し、約 43 秒で使えるようになる。<code>raspimouse</code> ノードは、SSH でロボットにログインして起動する。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 6-1 ロボットの設定</caption>
+  <thead><tr><th style="width:28%">項目</th><th>内容</th></tr></thead>
+  <tr><td>名前</td><td>chibamouse1</td></tr>
+  <tr><td>IP アドレス</td><td>&lt;ロボットのIP&gt;。研究用ルータが、ロボットの Wi-Fi の MAC アドレス（&lt;MACアドレス&gt;）に対して配る</td></tr>
+  <tr><td>Wi-Fi の接続先</td><td>&lt;研究用ルータのSSID&gt;（研究用ルータ）。設定は <code>/etc/netplan/</code> にあり、<code>chibamouse-wifi</code> で見る・足す・消す</td></tr>
+  <tr><td>ログイン</td><td>ユーザ ubuntu。Mac の鍵 <code>~/.ssh/pimouse_ed25519</code> でログインする</td></tr>
+  <tr><td>ROS_DOMAIN_ID</td><td>30。ロボットの <code>~/.bashrc</code> に書いてあり、ログインすると設定される</td></tr>
+  <tr><td>自動で起動するもの</td><td>ドライバ rtmouse（rtmouse.service）、Zenoh ルータ（zenoh-router.service、TCP 7447）</td></tr>
+  <tr><td>raspimouse ノード</td><td><code>ros2 launch raspimouse raspimouse.launch.py</code> で起動する</td></tr>
+</table>
+
+<h3>6.2 raspimouse ノードのトピック</h3>
+<p><code>raspimouse</code> ノードは、<code>/cmd_vel</code> で受け取った v と ω から左右の車輪の回る速さを計算して、モータを回す。表 6-2 は、指ダンスが使うものを中心に、<code>raspimouse</code> ノードのトピックとサービスをまとめたものである。オドメトリ（<code>/odom</code>）は、車輪の回転を測った値ではなく、受け取った指令から計算した値である。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 6-2 raspimouse ノードのトピックとサービス</caption>
+  <thead><tr><th style="width:26%">名前</th><th style="width:26%">型</th><th>中身</th></tr></thead>
+  <tr><td><code>/cmd_vel</code></td><td>TwistStamped（聞く）</td><td>速度の指令</td></tr>
+  <tr><td><code>/motor_power</code></td><td>SetBool（サービス）</td><td>モータの電源を入れる（true）・切る（false）</td></tr>
+  <tr><td><code>/odom</code></td><td>Odometry（流す）</td><td>指令から計算したロボットの位置と向き</td></tr>
+  <tr><td><code>/light_sensors</code></td><td>LightSensors（流す）</td><td>前方の 4 つの光センサの値。1 秒に約 90 回</td></tr>
+</table>
+</div>
+
+<!-- ======================= 7 章 ======================= -->
+<div class="chapter">
+<h2>7 章 プログラムとファイルの一覧</h2>
+<p>指ダンスのファイルは、すべて研究フォルダ <code>chibariyo-dance-mimic</code> の中にある。コンテナの <code>~/ros2_ws</code> は、研究フォルダの <code>ros2_ws</code> とつながっているので、コンテナで作ったファイルも研究フォルダに残る。表 7-1 は、ファイルとその役割の一覧である。</p>
+
+<table>
+  <caption>表 7-1 ファイルと役割</caption>
+  <thead><tr><th style="width:40%">ファイル</th><th style="width:12%">動く場所</th><th>役割</th></tr></thead>
+  <tr><td colspan="3"><b>ROS 2 のパッケージ finger_dance</b>（<code>ros2_ws/src/finger_dance/</code>）</td></tr>
+  <tr><td><code>finger_dance/finger_detect.py</code></td><td>コンテナ</td><td>ノード。カメラの映像から手を検出し、<code>/finger_gesture</code> と検出画面の画像を流す（4 章）</td></tr>
+  <tr><td><code>finger_dance/hand_shape.py</code></td><td>コンテナ</td><td>21 点から、指を伸ばしているか、手の形、指の向きを求める関数（4.3〜4.5 節）</td></tr>
+  <tr><td><code>finger_dance/finger_dance.py</code></td><td>コンテナ</td><td>ノード。<code>/finger_gesture</code> から速度の指令を作り、<code>/cmd_vel</code> に流す。状態の切り替え、モータの電源（5 章）</td></tr>
+  <tr><td><code>finger_dance/mapping.py</code></td><td>コンテナ</td><td>指の向きから v・ω を求める関数と、踊りの ω を求める関数（5.2 節、5.4 節）</td></tr>
+  <tr><td><code>launch/finger_dance.launch.py</code></td><td>コンテナ</td><td>rosbridge、2 つのノード、検出画面をまとめて起動する。turtlesim も起動できる</td></tr>
+  <tr><td><code>package.xml</code>、<code>setup.py</code>、<code>setup.cfg</code></td><td>コンテナ</td><td>パッケージの設定</td></tr>
+  <tr><td colspan="3"><b>コンテナ</b>（<code>docker/</code>）</td></tr>
+  <tr><td><code>Dockerfile</code></td><td>Mac</td><td>コンテナのイメージ finger-dance:jazzy を作る。ROS 2 のパッケージ、MediaPipe、手のモデルを入れる</td></tr>
+  <tr><td><code>compose.yaml</code></td><td>Mac</td><td>コンテナ finger_dance の設定。ポート 6081（デスクトップ画面）と 9091（rosbridge）</td></tr>
+  <tr><td><code>robot.bash</code></td><td>コンテナ</td><td><code>robot_connect</code>・<code>robot_disconnect</code>・<code>set_domain_id</code> の 3 つのコマンド</td></tr>
+  <tr><td><code>camera.html</code></td><td>Mac のブラウザ</td><td>カメラページ。カメラの映像を JPEG にして rosbridge に送る</td></tr>
+  <tr><td colspan="3"><b>ロボット</b>（<code>chibamouse/</code>）</td></tr>
+  <tr><td><code>chibamouse-setname</code></td><td>ロボット</td><td>SD カードを複製したときに、名前・machine-id・SSH のホスト鍵・ROS_DOMAIN_ID を設定する</td></tr>
+  <tr><td><code>chibamouse-wifi</code></td><td>ロボット</td><td>Wi-Fi の接続先を見る・足す・消す</td></tr>
+  <tr><td><code>作り方.md</code></td><td>—</td><td>ロボットの SD カードの作り方</td></tr>
+  <tr><td colspan="3"><b>記録と動画</b></td></tr>
+  <tr><td><code>ros2_ws/tools/bag_to_mp4.py</code></td><td>コンテナ</td><td>ros2 bag で記録した検出画面の画像を、時刻どおりの MP4 にする</td></tr>
+  <tr><td><code>tools/combine.sh</code></td><td>Mac</td><td>iPhone で撮ったロボットの動画と検出画面の動画を、時刻を合わせて左右に並べる</td></tr>
+  <tr><td><code>ros2_ws/bags/</code></td><td>—</td><td>ros2 bag の記録と、作った MP4 を置く</td></tr>
+  <tr><td><code>ros2_ws/ros_domain_id.txt</code></td><td>コンテナ</td><td>コンテナの ROS_DOMAIN_ID（30）</td></tr>
+</table>
+</div>
+
+<!-- ======================= 8 章 ======================= -->
+<div class="chapter">
+<h2>8 章 パラメータ</h2>
+<p>2 つのノードの動きは、ROS 2 のパラメータで変えられる。launch で起動するときは、表 8-1 の引数で一部を変えられる。表 8-2 は、ノードのパラメータとその既定値の一覧である。ノードを 1 つずつ起動するときは、<code>ros2 run finger_dance finger_dance --ros-args -p linear_max:=0.03</code> のようにパラメータを指定する。</p>
+
+<table style="break-inside:avoid">
+  <caption>表 8-1 launch の引数</caption>
+  <thead><tr><th style="width:22%">引数</th><th style="width:15%">既定値</th><th>意味</th></tr></thead>
+  <tr><td><code>turtlesim</code></td><td>false</td><td>true にすると、ロボットの代わりに turtlesim を起動して亀を動かす</td></tr>
+  <tr><td><code>rosbridge_port</code></td><td>9091</td><td>rosbridge のポート。カメラページの <code>?port=</code> と同じにする</td></tr>
+  <tr><td><code>view</code></td><td>true</td><td>検出画面を開くか</td></tr>
+  <tr><td><code>mirror</code></td><td>false</td><td>finger_detect の <code>mirror</code>（表 8-2）</td></tr>
+</table>
+
+<table>
+  <caption>表 8-2 ノードのパラメータ</caption>
+  <thead><tr><th style="width:15%">ノード</th><th style="width:20%">パラメータ</th><th style="width:15%">既定値</th><th>意味</th></tr></thead>
+  <tr><td>finger_detect</td><td><code>mirror</code></td><td>false</td><td>true にすると、指の向き θ の符号を逆にする（4.5 節）</td></tr>
+  <tr><td>finger_detect</td><td><code>ext_ratio</code></td><td>1.1</td><td>指を伸ばしていると判定する距離の比（4.3 節）</td></tr>
+  <tr><td>finger_detect</td><td><code>model</code></td><td>/opt/finger_dance/<br>hand_landmarker.task</td><td>Hand Landmarker のモデルファイル</td></tr>
+  <tr><td>finger_dance</td><td><code>turtlesim</code></td><td>false</td><td>true にすると、turtlesim の亀に Twist で指令を送る</td></tr>
+  <tr><td>finger_dance</td><td><code>linear_max</code></td><td>0.05</td><td>前後の速さ v の最大値 [m/s]。turtlesim では 1.0</td></tr>
+  <tr><td>finger_dance</td><td><code>angular_max</code></td><td>1.0</td><td>旋回の速さ ω の最大値 [rad/s]。turtlesim では 1.5</td></tr>
+  <tr><td>finger_dance</td><td><code>dance_angular</code></td><td>1.0</td><td>踊りの ω [rad/s]。turtlesim では 3.0</td></tr>
+  <tr><td>finger_dance</td><td><code>dance_period</code></td><td>0.4</td><td>踊りで左右を切り替える間隔 [s]</td></tr>
+  <tr><td>finger_dance</td><td><code>straight_band</code></td><td>10</td><td>真上・真下から何度以内で ω を 0 にするか [度]</td></tr>
+  <tr><td>finger_dance</td><td><code>side_band</code></td><td>20</td><td>真横から何度以内で v を 0 にするか [度]</td></tr>
+  <tr><td>finger_dance</td><td><code>timeout</code></td><td>0.5</td><td><code>/finger_gesture</code> がこの時間 [s] 届かなければ止まる</td></tr>
+  <tr><td>finger_dance</td><td><code>confirm</code></td><td>2</td><td>走る・踊るへ切り替えるまでに、同じ手の形を続けて受け取る回数</td></tr>
+  <tr><td>finger_dance</td><td><code>smoothing</code></td><td>0.5</td><td>指の向きを混ぜる割合。0 でそのまま、1 に近いほどなめらかだが遅れる（5.3 節）</td></tr>
+  <tr><td>finger_dance</td><td><code>stamped</code></td><td>true</td><td>速度の指令の型。true で TwistStamped、false で Twist</td></tr>
+  <tr><td>finger_dance</td><td><code>cmd_topic</code></td><td>/cmd_vel</td><td>速度の指令を流すトピック</td></tr>
+  <tr><td>finger_dance</td><td><code>motor_power</code></td><td>true</td><td>起動・終了のときにモータの電源を入れる・切るか</td></tr>
+</table>
+</div>
+
+<!-- ======================= 9 章 ======================= -->
+<div class="chapter">
+<h2>9 章 設計上の考慮点</h2>
+
+<h4>手の検出を Mac で行う理由</h4>
+<p>手の検出は、Mac のコンテナで 1 枚約 70〜180 ms かかる。ロボットの Raspberry Pi 3 は Mac よりはるかに遅く、メモリも 1 GB しかないので、同じ処理を 1 秒に何回も行うことはできない。従って、手の検出は Mac で行い、ロボットには速度の指令だけを送る。このようにすることで、Wi-Fi に流れるデータは 0.1 秒ごとの速度の指令だけになり、カメラの映像は Wi-Fi に流れない。</p>
+
+<h4>速さの最大値</h4>
+<p>前後の速さの最大値は 0.05 m/s、旋回の速さの最大値は 1.0 rad/s にしている。ロボットのタイヤはゴムが滑りやすく、これより速いと、指令どおりに動かなくなるからである。旋回の速さ 1.0 rad/s のとき、車輪の速さは約 0.047 m/s であり、前後の最大値とほぼ同じになる。</p>
+
+<h4>止まる方向に倒した安全の考え方</h4>
+<p>指ダンスでは、迷ったときはロボットが止まるように作っている。走り出すには同じ手の形を 2 回続けて検出する必要があるが、止まるには 1 回で足りる。手が映らないとき、手の形が分からないとき、検出結果が 0.5 秒届かないときも止まる。このようにすることで、検出の誤りや通信の途切れがあっても、ロボットが勝手に走り続けることはない。ただし、走り出すまでに画像 2 枚分、約 0.2 秒の遅れが生じる。</p>
+
+<h4>親指を使わない理由</h4>
+<p>親指は、ほかの 4 本と違って横に開くので、手首からの距離で伸ばしているかを判定すると、手の向きによって結果が変わりやすい。従って、手の形の判定には親指を使わない。このようにすることで、親指を立てていてもいなくても、同じ手の形として扱われる。例えば、親指だけを立てた手はグーと判定され、ロボットは止まる。</p>
+
+<h4>検出画面に非圧縮の画像を使う理由</h4>
+<p><code>rqt_image_view</code> に JPEG のトピック <code>/finger_image/compressed</code> を表示させると、<code>rqt_image_view</code> が起動した時点で <code>finger_detect</code> がまだ見つかっていない場合に、このトピックを非圧縮の画像のトピックと取り違え、何も表示しない。従って、<code>finger_detect</code> は表示用に非圧縮の <code>/finger_image</code> も流し、検出画面はそちらを表示する。非圧縮の画像は 1 枚約 900 KB と大きいが、受け取るのはコンテナの中の <code>rqt_image_view</code> だけなので、Wi-Fi には流れない。</p>
+
+<h4>1 本の手だけを検出すること</h4>
+<p>Hand Landmarker は、1 本の手だけを検出する設定にしている。従って、操作する手のほかにもう一方の手が映っていると、そちらの手を検出して、操作する手を見ないことがある。操作しない手は、カメラに映らないところに置く。</p>
+
+<h4>ほかのロボットへの応用</h4>
+<p><code>hand_shape.py</code> と <code>mapping.py</code> は ROS 2 を使わない関数だけでできており、ほかのロボットでもそのまま使える。伴走型スマート車いす「チバリヨカー」で使う場合は、<code>finger_dance</code> のパラメータを <code>stamped:=false</code>、<code>cmd_topic:=/cmd_vel</code>、<code>motor_power:=false</code> にし、速さの最大値を車いすに合わせて決める。人が乗る車いすでは、最大値を小さくしてから試す。</p>
+</div>
+
+</body>
+</html>

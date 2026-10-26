@@ -1,0 +1,17 @@
+# 指ダンス（finger_dance）のコンテナ
+#   docker compose up -d --build → ブラウザで http://localhost:6081 （デスクトップ）
+#   カメラ：http://localhost:6081/camera.html?port=9091
+# ポートは専攻科実験のコンテナ（6080・9090）や wheelchair_follow（6080）と重ならないようにしている。
+services:
+  finger_dance:
+    build: .
+    image: finger-dance:jazzy
+    container_name: finger_dance
+    ports:
+      - "127.0.0.1:${VNC_PORT:-6081}:80"   # noVNC（デスクトップ）と camera.html
+      - "127.0.0.1:9091:9091"              # rosbridge（camera.html → /image_raw/compressed）
+    shm_size: "1gb"
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - ../ros2_ws:/home/ubuntu/ros2_ws   # ROS_DOMAIN_ID は ros2_ws/ros_domain_id.txt（30）から読まれる

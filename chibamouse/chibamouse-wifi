@@ -1,0 +1,106 @@
+#!/bin/bash
+# chibamouse1 の Wi-Fi の接続先を見る・足す・消す（研究用。ロボットの /usr/local/sbin/ に入れて使う）
+#   sudo chibamouse-wifi list            … 覚えている Wi-Fi の名前（SSID）を表示する（パスワードは表示しない）
+#   sudo chibamouse-wifi add <SSID>      … Wi-Fi を足す。パスワードを聞かれる（打っても画面には出ない）
+#   sudo chibamouse-wifi remove <SSID>   … Wi-Fi を消す（最後の1つは消せない）
+# 変更は、次に電源を入れたときに使われる（sudo poweroff → 緑の LED が消えてから電源を切り、入れ直す。reboot は使わない）。
+# 設定は /etc/netplan/ に書く。複製した SD カードでは cloud-init が network-config を読み直さないので、
+# system-boot の network-config を Mac で書き換えても効かない。
+set -e
+usage() {
+    echo "使い方: sudo chibamouse-wifi list | add <SSID> | remove <SSID>"
+    exit 1
+}
+[ "$(id -u)" = 0 ] || { echo "sudo を付けて実行してください（例: sudo chibamouse-wifi list）"; exit 1; }
+cmd="$1"
+ssid="$2"
+pw=""
+case "$cmd" in
+    list) ;;
+    add)
+        [ -n "$ssid" ] || usage
+        read -r -s -p "「$ssid」のパスワード（画面には出ません）: " pw; echo
+        [ "${#pw}" -ge 8 ] || { echo "WPA2 のパスワードは8文字以上です。やり直してください。"; exit 1; }
+        ;;
+    remove) [ -n "$ssid" ] || usage ;;
+    *) usage ;;
+esac
+
+# 失敗したときに元に戻せるよう、今の設定を控えておく
+backup=$(mktemp -d)
+cp -a /etc/netplan/. "$backup/"
+trap 'rm -rf "$backup"' EXIT
+
+PW="$pw" python3 - "$cmd" "$ssid" <<'PYEOF'
+import glob, os, sys
+import yaml
+
+cmd, ssid = sys.argv[1], sys.argv[2]
+NEW = '/etc/netplan/60-chibamouse-wifi.yaml'
+
+def load(path):
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+def save(path, data):
+    with open(path, 'w') as f:
+        yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
+    os.chmod(path, 0o600)   # パスワードが入るので root だけが読めるようにする
+
+files = {p: load(p) for p in sorted(glob.glob('/etc/netplan/*.yaml'))}
+
+def wifis(data):
+    return (data.get('network') or {}).get('wifis') or {}
+
+def all_ssids():
+    out = []
+    for p, d in files.items():
+        for ifname, conf in wifis(d).items():
+            for s in (conf or {}).get('access-points') or {}:
+                out.append((s, ifname, p))
+    return out
+
+if cmd == 'list':
+    for s, ifname, p in all_ssids():
+        print(f'{s}\t（{ifname}、{p}）')
+    sys.exit(0)
+
+if cmd == 'add':
+    ifname = next((i for d in files.values() for i in wifis(d)), 'wlan0')
+    data = files.get(NEW) or {'network': {'version': 2, 'wifis': {}}}
+    conf = data['network'].setdefault('wifis', {}).setdefault(ifname, {'dhcp4': True, 'optional': True})
+    conf.setdefault('access-points', {})[ssid] = {'password': os.environ['PW']}
+    save(NEW, data)
+    print(f'「{ssid}」を足しました（{NEW}）。')
+
+if cmd == 'remove':
+    found = [x for x in all_ssids() if x[0] == ssid]
+    if not found:
+        print(f'「{ssid}」は登録されていません。'); sys.exit(1)
+    if len(all_ssids()) - len(found) < 1:
+        print('最後の1つは消せません（Wi-Fi につながらなくなるため）。先に別の Wi-Fi を add してください。'); sys.exit(1)
+    for _, ifname, p in found:
+        w = wifis(files[p])
+        del w[ifname]['access-points'][ssid]
+        if not w[ifname]['access-points']:   # 空の access-points は netplan の誤りになるので、インタフェースごと消す
+            del w[ifname]
+            if not w:
+                del files[p]['network']['wifis']
+        save(p, files[p])
+    # cloud-init がネットワークの設定を作り直して、消した Wi-Fi を戻さないようにする
+    with open('/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg', 'w') as f:
+        f.write('network: {config: disabled}\n')
+    print(f'「{ssid}」を消しました。')
+PYEOF
+
+[ "$cmd" = list ] && exit 0
+if netplan generate 2>/tmp/chibamouse-wifi.err; then
+    echo "設定に誤りはありません。sudo poweroff → 電源を入れ直すと使われます（reboot は使わない）。"
+elif grep -q "Error in network definition\|Invalid YAML" /tmp/chibamouse-wifi.err; then
+    cat /tmp/chibamouse-wifi.err
+    rm -f /etc/netplan/*.yaml && cp -a "$backup/." /etc/netplan/
+    echo "設定に誤りがあったので、元に戻しました。"
+    exit 1
+else
+    echo "設定を書きました（netplan generate の警告: $(head -1 /tmp/chibamouse-wifi.err)）。sudo poweroff → 電源を入れ直すと使われます（reboot は使わない）。"
+fi

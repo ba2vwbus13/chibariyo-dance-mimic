@@ -1,0 +1,45 @@
+#!/bin/bash
+# 専攻科実験のイメージを複製した SD カードを、研究用のロボット（chibamouse1 など）に作り変える。
+# 専攻科実験の pimouse-setname（授業/13専攻科実験/2026/_scripts/）を元に、名前を自由に付けられるようにし、
+# ROS_DOMAIN_ID（研究用は 30）を ~/.bashrc に書くようにした。
+#   使い方: sudo chibamouse-setname <名前> [ROS_DOMAIN_ID]　（例: sudo chibamouse-setname chibamouse1 30）
+#   終わったら sudo poweroff → 緑の LED が消えてから電源を切り、入れ直す（reboot は使わない）
+set -e
+[ "$(id -u)" = 0 ] || { echo "sudo を付けて実行してください（例: sudo chibamouse-setname chibamouse1）"; exit 1; }
+name="$1"
+domain="${2:-30}"
+[[ "$name" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || { echo "使い方: sudo chibamouse-setname <名前（英小文字・数字・-）> [ROS_DOMAIN_ID]"; exit 1; }
+[[ "$domain" =~ ^[0-9]+$ ]] && [ "$domain" -le 101 ] || { echo "ROS_DOMAIN_ID は 0〜101 の数字にしてください"; exit 1; }
+old_id=$(cat /etc/machine-id)
+
+# 名前（cloud-init が起動のたびに user-data の hostname を使うので、そちらも書き換える）
+hostnamectl set-hostname "$name"
+sed -i -E "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1 $name $name/" /etc/hosts
+sed -i -E "s/^hostname:.*/hostname: $name/" /boot/firmware/user-data
+
+# machine-id を作り直す（/var/lib/dbus/machine-id は /etc/machine-id へのリンク）
+rm -f /etc/machine-id
+systemd-machine-id-setup >/dev/null
+[ -n "$old_id" ] && [ "$old_id" != "$(cat /etc/machine-id)" ] && rm -rf "/var/log/journal/$old_id"
+
+# SSH のホスト鍵を作り直す
+rm -f /etc/ssh/ssh_host_*
+ssh-keygen -A >/dev/null
+
+# ROS_DOMAIN_ID（研究用のロボットは決まった人しか使わないので、ログインのたびに自動で設定する）
+bashrc=/home/ubuntu/.bashrc
+sed -i '/^export ROS_DOMAIN_ID=/d' "$bashrc"
+echo "export ROS_DOMAIN_ID=$domain" >> "$bashrc"
+
+# ログインしたときの表示に、研究用であることを書き足す
+grep -q "研究用のロボット" /etc/motd 2>/dev/null || echo "研究用のロボット $name（専攻科実験とは別。ROS_DOMAIN_ID=$domain）" >> /etc/motd
+
+# パーティションがカードいっぱいに広がっていなければ広げる（通常は cloud-init が起動時に広げている）
+growpart /dev/mmcblk0 2 >/dev/null 2>&1 && resize2fs /dev/mmcblk0p2 >/dev/null 2>&1 || true
+
+echo "$name に作り変えました。"
+echo "  machine-id: $(cat /etc/machine-id)"
+echo "  ROS_DOMAIN_ID: $domain（~/.bashrc）"
+echo "  wlan0 の MAC アドレス: $(cat /sys/class/net/wlan0/address)（ルータの DHCP リースに登録する）"
+echo "  容量: $(df -h / | awk 'NR==2{print $2}')"
+echo "次に sudo poweroff を実行し、緑の LED が消えてから電源を切って、入れ直してください（reboot は使わない）。"

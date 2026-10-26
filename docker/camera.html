@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>PCカメラ → ROS 2</title>
+<style>
+  body { font-family: "Meiryo UI", "Hiragino Sans", sans-serif; margin: 16px; background: #f4f6fa; color: #222; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .row { margin: 8px 0; }
+  label { margin-right: 12px; }
+  button { font-size: 15px; padding: 6px 18px; margin-right: 8px; }
+  video { width: 480px; max-width: 100%; background: #000; border: 1px solid #999; }
+  #status { font-weight: bold; }
+  .ok { color: #1a7f37; } .ng { color: #c62828; }
+  .note { font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+<h1>PCのカメラの映像を ROS 2 に送る（/image_raw/compressed）</h1>
+<p class="note">使う前に、コンテナの端末で <code>ros2 launch rosbridge_server rosbridge_websocket_launch.xml</code> を実行しておくこと。</p>
+<div class="row">
+  <label>カメラ <select id="camera"></select></label>
+  <label>解像度 <select id="size"><option value="320x240">320×240</option><option value="640x480" selected>640×480</option></select></label>
+  <label>フレームレート <select id="fps"><option>5</option><option selected>10</option><option>15</option></select> fps</label>
+</div>
+<div class="row">
+  <button id="start">開始</button><button id="stop" disabled>停止</button>
+  <span id="status">停止中</span>
+</div>
+<div class="row"><video id="video" autoplay playsinline muted></video></div>
+<p class="note">送信した枚数：<span id="count">0</span>　トピック：/image_raw/compressed（sensor_msgs/msg/CompressedImage）</p>
+<canvas id="canvas" style="display:none"></canvas>
+
+<script>
+const TOPIC = '/image_raw/compressed';
+const WS_PORT = new URLSearchParams(location.search).get('port') || '9090';
+const $ = id => document.getElementById(id);
+let ws = null, stream = null, timer = null, count = 0;
+
+function setStatus(text, ok) {
+  $('status').textContent = text;
+  $('status').className = ok === undefined ? '' : (ok ? 'ok' : 'ng');
+}
+
+async function listCameras() {
+  try {
+    // 名前を表示するには一度カメラの使用を許可してもらう必要がある
+    const s = await navigator.mediaDevices.getUserMedia({ video: true });
+    s.getTracks().forEach(t => t.stop());
+  } catch (e) { setStatus('カメラを使えません：' + e.message, false); return; }
+  const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  $('camera').innerHTML = devices.map((d, i) => `<option value="${d.deviceId}">${d.label || 'カメラ ' + (i + 1)}</option>`).join('');
+}
+
+function toBase64(blob) {
+  return new Promise(resolve => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.readAsDataURL(blob);
+  });
+}
+
+async function start() {
+  const [w, h] = $('size').value.split('x').map(Number);
+  const fps = Number($('fps').value);
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: $('camera').value ? { exact: $('camera').value } : undefined, width: w, height: h }
+    });
+  } catch (e) { setStatus('カメラを開けません：' + e.message, false); return; }
+  $('video').srcObject = stream;
+
+  ws = new WebSocket(`ws://${location.hostname}:${WS_PORT}`);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ op: 'advertise', topic: TOPIC, type: 'sensor_msgs/msg/CompressedImage' }));
+    setStatus('送信中', true);
+    timer = setInterval(() => sendFrame(w, h), 1000 / fps);
+  };
+  ws.onerror = () => setStatus(`rosbridge（ポート ${WS_PORT}）に接続できません。コンテナで rosbridge を起動したか確認してください`, false);
+  ws.onclose = () => { if (timer) stop(); };
+  $('start').disabled = true; $('stop').disabled = false;
+}
+
+async function sendFrame(w, h) {
+  const video = $('video');
+  if (!ws || ws.readyState !== 1 || video.readyState < 2) return;
+  if (ws.bufferedAmount > 1000000) return;   // 送りきれていないときは、この1枚を飛ばす
+  const canvas = $('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+  const now = Date.now();
+  ws.send(JSON.stringify({
+    op: 'publish', topic: TOPIC,
+    msg: {
+      header: { stamp: { sec: Math.floor(now / 1000), nanosec: (now % 1000) * 1000000 }, frame_id: 'pc_camera' },
+      format: 'jpeg',
+      data: await toBase64(blob)
+    }
+  }));
+  $('count').textContent = ++count;
+}
+
+function stop() {
+  clearInterval(timer); timer = null;
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('video').srcObject = null;
+  $('start').disabled = false; $('stop').disabled = true;
+  setStatus('停止中');
+}
+
+$('start').onclick = start;
+$('stop').onclick = stop;
+listCameras().then(() => { if (new URLSearchParams(location.search).get('autostart')) start(); });
+</script>
+</body>
+</html>
