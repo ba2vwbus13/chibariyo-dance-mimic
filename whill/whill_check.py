@@ -62,4 +62,5 @@ finally:
         w.send_joystick(front=0, side=0)
         time.sleep(0.05)
     w.release_joystick()   # 車いすのジョイスティックを使えるように戻す
-    w.stop_data_stream()
+    # pywhill 1.5.0 の stop_data_stream() は長さの表に STOP がなく KeyError になるので、STOP（長さ 1）を直接送る
+    w.com.write(bytes([0xAF, 0x02, 0x01, 0xAF ^ 0x02 ^ 0x01]))
