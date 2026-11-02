@@ -7,7 +7,9 @@
 # 安全のための仕組み
 #   ・ジョイスティックの倒し量を小さく制限する（旋回は既定 10%、前後は既定 0% = 前後に動かない。どちらも最大 20%）。
 #     速さは車いすの速度モードにも従う。前後の揺れを試すときは --front-cap 5 などを付ける
+#     Model CR は同じ倒し量でも後退が前進の 1/3 ほどの速さなので、後ろ向きは --back-gain 倍（既定 3）にして釣り合わせる
 #   ・倒し量は 1 秒に 20% までしか増やさない（急に動き出さない）。止めるときはすぐ 0 にする
+#     （後退は倒し量を back-gain 倍にしているので、増やす速さも同じ倍。車いすの速さの上がり方は前進と同じになる）
 #   ・指令が 0.3 秒届かない・踊りのプログラムが止まった・rosbridge が切れたら止める
 #   ・Enter キーで「停止」と「再開」を切り替える（停止中は 0 を送り続ける）
 #   ・Ctrl + C で終わるときは、止めてから車いすのジョイスティックを使えるように戻す
@@ -27,6 +29,8 @@ ap.add_argument('--linear-max', type=float, default=0.1, help='この前後の�
 ap.add_argument('--angular-max', type=float, default=0.3, help='この旋回の速さ [rad/s] を、倒し量の上限に当てる')
 ap.add_argument('--front-cap', type=int, default=0, help='前後の倒し量の上限 [パーセント]（既定 0 = 前後に動かない。最大 20）')
 ap.add_argument('--side-cap', type=int, default=10, help='旋回の倒し量の上限 [パーセント]（最大 20）')
+ap.add_argument('--back-gain', type=float, default=3.0,
+                help='後ろ向きの倒し量を何倍にするか。Model CR は同じ倒し量だと後退が前進の 1/3 ほどの速さなので 3（最大 20%%）')
 ap.add_argument('--side-sign', type=int, default=-1, choices=(-1, 1),
                 help='ROS の左回り（+）を、車いすの side の符号に直す。pywhill では side + が右回りなので -1')
 ap.add_argument('--ramp', type=float, default=20.0, help='倒し量を増やす速さの上限 [パーセント/秒]')
@@ -95,7 +99,7 @@ if not args.dry_run:
 
 threading.Thread(target=ros_thread, daemon=True).start()
 threading.Thread(target=key_thread, daemon=True).start()
-print(f'rosbridge {args.rosbridge} の {args.topic} を受け取り、倒し量 前後 ±{FRONT_CAP}%・旋回 ±{SIDE_CAP}% で送ります。'
+print(f'rosbridge {args.rosbridge} の {args.topic} を受け取り、倒し量 前 {FRONT_CAP}%・後ろ {min(20, round(FRONT_CAP * args.back_gain))}%・旋回 ±{SIDE_CAP}% で送ります。'
       f'Enter で停止・再開、Ctrl + C で終了。')
 
 front = side = 0.0
@@ -111,9 +115,13 @@ try:
             why = '停止中' if stopped else ('rosbridge なし' if not connected else '指令なし')
         else:
             tf = clip(v / args.linear_max, -1, 1) * FRONT_CAP
+            if tf < 0:
+                tf = max(-20.0, tf * args.back_gain)  # 後退は遅いので倒し量を増やす（20% を超えない）
             ts = args.side_sign * clip(w / args.angular_max, -1, 1) * SIDE_CAP
             step = args.ramp * period                # 増やすときはゆっくり
-            front += clip(tf - front, -step, step) if abs(tf) > abs(front) else (tf - front)
+            # 後退は倒し量を back-gain 倍にしているので、増やす速さも同じ倍にする（車いすの速さの上がり方は前進と同じ）
+            fstep = step * max(1.0, args.back_gain) if tf < 0 else step
+            front += clip(tf - front, -fstep, fstep) if abs(tf) > abs(front) else (tf - front)
             side += clip(ts - side, -step, step) if abs(ts) > abs(side) else (ts - side)
             why = '踊っている'
         f, s = int(round(front)), int(round(side))
