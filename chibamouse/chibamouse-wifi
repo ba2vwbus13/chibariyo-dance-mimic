@@ -6,12 +6,15 @@
 # 変更は、次に電源を入れたときに使われる（sudo poweroff → 緑の LED が消えてから電源を切り、入れ直す。reboot は使わない）。
 # 設定は /etc/netplan/ に書く。複製した SD カードでは cloud-init が network-config を読み直さないので、
 # system-boot の network-config を Mac で書き換えても効かない。
+# Raspberry Pi に直接つないだ画面（TERM=linux）は日本語を表示できないので、そのときは英語で表示する。
 set -e
+if [ "${TERM:-}" = linux ]; then EN=1; else EN=0; fi
+say() { if [ "$EN" = 1 ]; then echo "$2"; else echo "$1"; fi; }
 usage() {
-    echo "使い方: sudo chibamouse-wifi list | add <SSID> | remove <SSID>"
+    say "使い方: sudo chibamouse-wifi list | add <SSID> | remove <SSID>" "Usage: sudo chibamouse-wifi list | add <SSID> | remove <SSID>"
     exit 1
 }
-[ "$(id -u)" = 0 ] || { echo "sudo を付けて実行してください（例: sudo chibamouse-wifi list）"; exit 1; }
+[ "$(id -u)" = 0 ] || { say "sudo を付けて実行してください（例: sudo chibamouse-wifi list）" "Run with sudo (e.g. sudo chibamouse-wifi list)"; exit 1; }
 cmd="$1"
 ssid="$2"
 pw=""
@@ -19,8 +22,9 @@ case "$cmd" in
     list) ;;
     add)
         [ -n "$ssid" ] || usage
-        read -r -s -p "「$ssid」のパスワード（画面には出ません）: " pw; echo
-        [ "${#pw}" -ge 8 ] || { echo "WPA2 のパスワードは8文字以上です。やり直してください。"; exit 1; }
+        if [ "$EN" = 1 ]; then prompt="Wi-Fi password for \"$ssid\" (not shown while typing): "; else prompt="「$ssid」のパスワード（画面には出ません）: "; fi
+        read -r -s -p "$prompt" pw; echo
+        [ "${#pw}" -ge 8 ] || { say "WPA2 のパスワードは8文字以上です。やり直してください。" "A WPA2 password has at least 8 characters. Try again."; exit 1; }
         ;;
     remove) [ -n "$ssid" ] || usage ;;
     *) usage ;;
@@ -31,11 +35,14 @@ backup=$(mktemp -d)
 cp -a /etc/netplan/. "$backup/"
 trap 'rm -rf "$backup"' EXIT
 
-PW="$pw" python3 - "$cmd" "$ssid" <<'PYEOF'
+PW="$pw" EN="$EN" python3 - "$cmd" "$ssid" <<'PYEOF'
 import glob, os, sys
 import yaml
 
 cmd, ssid = sys.argv[1], sys.argv[2]
+EN = os.environ.get('EN') == '1'
+def say(ja, en):
+    print(en if EN else ja)
 NEW = '/etc/netplan/60-chibamouse-wifi.yaml'
 
 def load(path):
@@ -62,7 +69,7 @@ def all_ssids():
 
 if cmd == 'list':
     for s, ifname, p in all_ssids():
-        print(f'{s}\t（{ifname}、{p}）')
+        print(f'{s}\t({ifname}, {p})' if EN else f'{s}\t（{ifname}、{p}）')
     sys.exit(0)
 
 if cmd == 'add':
@@ -71,14 +78,14 @@ if cmd == 'add':
     conf = data['network'].setdefault('wifis', {}).setdefault(ifname, {'dhcp4': True, 'optional': True})
     conf.setdefault('access-points', {})[ssid] = {'password': os.environ['PW']}
     save(NEW, data)
-    print(f'「{ssid}」を足しました（{NEW}）。')
+    say(f'「{ssid}」を足しました（{NEW}）。', f'Added "{ssid}" ({NEW}).')
 
 if cmd == 'remove':
     found = [x for x in all_ssids() if x[0] == ssid]
     if not found:
-        print(f'「{ssid}」は登録されていません。'); sys.exit(1)
+        say(f'「{ssid}」は登録されていません。', f'"{ssid}" is not registered.'); sys.exit(1)
     if len(all_ssids()) - len(found) < 1:
-        print('最後の1つは消せません（Wi-Fi につながらなくなるため）。先に別の Wi-Fi を add してください。'); sys.exit(1)
+        say('最後の1つは消せません（Wi-Fi につながらなくなるため）。先に別の Wi-Fi を add してください。', 'The last Wi-Fi cannot be removed. Add another one first.'); sys.exit(1)
     for _, ifname, p in found:
         w = wifis(files[p])
         del w[ifname]['access-points'][ssid]
@@ -90,17 +97,17 @@ if cmd == 'remove':
     # cloud-init がネットワークの設定を作り直して、消した Wi-Fi を戻さないようにする
     with open('/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg', 'w') as f:
         f.write('network: {config: disabled}\n')
-    print(f'「{ssid}」を消しました。')
+    say(f'「{ssid}」を消しました。', f'Removed "{ssid}".')
 PYEOF
 
 [ "$cmd" = list ] && exit 0
 if netplan generate 2>/tmp/chibamouse-wifi.err; then
-    echo "設定に誤りはありません。sudo poweroff → 電源を入れ直すと使われます（reboot は使わない）。"
+    say "設定に誤りはありません。sudo poweroff → 電源を入れ直すと使われます（reboot は使わない）。" "OK. Run sudo poweroff, then switch the power off and on to use it (do not use reboot)."
 elif grep -q "Error in network definition\|Invalid YAML" /tmp/chibamouse-wifi.err; then
     cat /tmp/chibamouse-wifi.err
     rm -f /etc/netplan/*.yaml && cp -a "$backup/." /etc/netplan/
-    echo "設定に誤りがあったので、元に戻しました。"
+    say "設定に誤りがあったので、元に戻しました。" "The setting had an error and was restored."
     exit 1
 else
-    echo "設定を書きました（netplan generate の警告: $(head -1 /tmp/chibamouse-wifi.err)）。sudo poweroff → 電源を入れ直すと使われます（reboot は使わない）。"
+    say "設定を書きました（netplan generate の警告: $(head -1 /tmp/chibamouse-wifi.err)）。sudo poweroff → 電源を入れ直すと使われます（reboot は使わない）。" "Saved (netplan warning: $(head -1 /tmp/chibamouse-wifi.err)). Run sudo poweroff, then switch the power off and on."
 fi
