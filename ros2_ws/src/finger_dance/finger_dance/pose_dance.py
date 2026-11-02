@@ -28,28 +28,44 @@ except ImportError:   # LED の型がない環境（turtlesim だけで使うと
 
 PERIOD = 0.05   # 指令を送る間隔 [s]
 
+# ロボットごとの既定値（パラメータで個別に変えられる）
+#   whill：WHILL Model CR（人が乗る重い車体なので、速さと振れ幅を小さくする。whill/whill_bridge.py が rosbridge で受け取る）
+PRESETS = {
+    'raspimouse': dict(bounce_gain=0.1, heading_limit=60.0, forward_limit=0.02, linear_max=0.05, angular_max=1.0,
+                       stamped=True, cmd_topic='/cmd_vel', motor_power=True, leds=True),
+    # turtlesim の亀は画面の大きさが約 11 なので、前後の動きを 50 倍にして見えるようにする
+    'turtlesim': dict(bounce_gain=5.0, heading_limit=60.0, forward_limit=1.0, linear_max=1.0, angular_max=2.0,
+                      stamped=False, cmd_topic='/turtle1/cmd_vel', motor_power=False, leds=False),
+    'whill': dict(bounce_gain=0.25, heading_limit=30.0, forward_limit=0.05, linear_max=0.1, angular_max=0.3,
+                  stamped=False, cmd_topic='/cmd_vel', motor_power=False, leds=False),
+}
+
 
 class PoseDance(Node):
 
     def __init__(self):
         super().__init__('pose_dance')
         self.turtlesim = self.declare_parameter('turtlesim', False).value
-        sim = self.turtlesim
         p = self.declare_parameter
+        robot = p('robot', 'auto').value   # raspimouse・turtlesim・whill。auto なら turtlesim の値で決める
+        if robot == 'auto':
+            robot = 'turtlesim' if self.turtlesim else 'raspimouse'
+        if robot not in PRESETS:
+            raise ValueError(f'robot は {list(PRESETS)} のどれか: {robot}')
+        d = PRESETS[robot]
         self.mapper = DanceMapper(
             yaw_gain=p('yaw_gain', 0.7).value, sway_gain=p('sway_gain', 60.0).value,
-            # turtlesim の亀は画面の大きさが約 11 なので、前後の動きを 50 倍にして見えるようにする
-            bounce_gain=p('bounce_gain', 5.0 if sim else 0.1).value,
-            heading_limit=p('heading_limit', 60.0).value, forward_limit=p('forward_limit', 1.0 if sim else 0.02).value)
+            bounce_gain=p('bounce_gain', d['bounce_gain']).value,
+            heading_limit=p('heading_limit', d['heading_limit']).value, forward_limit=p('forward_limit', d['forward_limit']).value)
         self.follower = Follower(
             heading_gain=p('heading_gain', 3.0).value, forward_gain=p('forward_gain', 4.0).value,
-            linear_max=p('linear_max', 1.0 if sim else 0.05).value, angular_max=p('angular_max', 2.0 if sim else 1.0).value)
+            linear_max=p('linear_max', d['linear_max']).value, angular_max=p('angular_max', d['angular_max']).value)
         self.timeout = p('timeout', 0.5).value
         self.delay = p('delay', 0.0).value
-        self.stamped = p('stamped', not sim).value
-        cmd_topic = p('cmd_topic', '/turtle1/cmd_vel' if sim else '/cmd_vel').value
-        self.use_motor_power = p('motor_power', not sim).value
-        self.use_leds = p('leds', not sim).value and Leds is not None
+        self.stamped = p('stamped', d['stamped']).value
+        cmd_topic = p('cmd_topic', d['cmd_topic']).value
+        self.use_motor_power = p('motor_power', d['motor_power']).value
+        self.use_leds = p('leds', d['leds']).value and Leds is not None
 
         self.pub = self.create_publisher(TwistStamped if self.stamped else Twist, cmd_topic, 10)
         self.pub_leds = self.create_publisher(Leds, '/leds', 10) if self.use_leds else None
@@ -61,7 +77,7 @@ class PoseDance(Node):
         self.last_pose_time = None            # 最後に /dance_pose を受け取った時刻
         self.leds = None
         self.state = None
-        self.get_logger().info(f'送り先 {cmd_topic}、向き ±{self.mapper.heading_limit:.0f}°、'
+        self.get_logger().info(f'ロボット {robot}、送り先 {cmd_topic}、向き ±{self.mapper.heading_limit:.0f}°、'
                                f'前後 ±{self.mapper.forward_limit:g}、遅れ {self.delay:g} 秒')
 
     def now(self):
