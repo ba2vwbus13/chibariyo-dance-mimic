@@ -64,7 +64,7 @@ ros2 launch finger_dance pose_dance.launch.py turtlesim:=true
 
 ## 共同開発
 
-変更は、ブランチを作ってプルリクエストで出す。進め方と決まり（公開してはいけない情報、ロボットを動かすときの安全）は [CONTRIBUTING.md](CONTRIBUTING.md) にまとめた。
+初めての学生は [学生の手順](docs/学生の手順.md) から始める。変更は、ブランチを作ってプルリクエストで出す。進め方と決まり（公開してはいけない情報、ロボットを動かすときの安全）は [CONTRIBUTING.md](CONTRIBUTING.md) にまとめた。
 
 ## 使わせていただいたもの
 

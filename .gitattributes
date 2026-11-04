@@ -1,0 +1,7 @@
+# Windows で clone しても、改行を LF のままにする（CRLF になると、コンテナの中で .sh・.bash・.py が動かなくなる）
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary
+*.mp4 binary
+*.task binary
