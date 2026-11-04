@@ -11,3 +11,16 @@ ros2_ws/videos/
 local/
 # 実機の記録（whill_bridge.py --log など）。報告に使うものは研究フォルダに置く
 whill/*.csv
+# 人追従（follow/）：ビルドで作られるもの、録画、YOLO のモデル、計測の生の記録（まとめた RESULTS_*.md だけを入れる）
+follow/ros2_ws/build/
+follow/ros2_ws/install/
+follow/ros2_ws/log/
+follow/ros2_ws/videos/
+follow/ros2_ws/*.pt
+*.onnx
+follow/build.log
+follow/ros2_ws/metrics/*
+!follow/ros2_ws/metrics/RESULTS_*.md
+follow/ros2_ws/metrics_pose/*
+!follow/ros2_ws/metrics_pose/RESULTS_*.md
+!follow/ros2_ws/metrics_pose/run_follow.sh

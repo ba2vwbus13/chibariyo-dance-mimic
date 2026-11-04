@@ -6,6 +6,7 @@
 |---|---|---|
 | 指ダンス（finger_dance） | 手の形と人差し指の向き（MediaPipe Hand Landmarker） | 人差し指の向きで前進・旋回・後退、チョキで踊る、グー・パーで止まる |
 | ダンスの物真似（pose_dance） | 人の体の 33 点（MediaPipe Pose Landmarker）。カメラの前の人、またはダンスの動画 | 体の向きと腰の揺れで向きを変え、腰の上下で前後に揺れ、手を上げると LED が点く |
+| 人追従（follow、シミュレーション） | 車いすのカメラの映像。体の骨格（MediaPipe Pose）、YOLO＋色の Re-ID、2D LiDAR | Gazebo の中で、車いすが前を歩く人に 1.2 m の距離で付いていく。人混みでの取り違えも測る。ROS 2 Humble ＋ Gazebo Fortress の別のコンテナで動かす。手順は [follow/README.md](follow/README.md) |
 | WHILL Model CR（試作中） | ダンスの物真似、または指ダンスの速度の指令（`robot:=whill`） | `whill/whill_bridge.py` がジョイスティックの小さな倒し量に直して電動車いすに送る。手順と安全の決まりは [whill/手順.md](whill/手順.md) |
 
 ## デモ
@@ -35,6 +36,7 @@ PC（Mac）の Docker コンテナで ROS 2 Jazzy を動かし、手や体の検
 | `ros2_ws/src/finger_dance/` | ROS 2 のパッケージ。指ダンス（`finger_detect.py`、`finger_dance.py`）とダンスの物真似（`video_source.py`、`pose_detect.py`、`pose_dance.py`）。対応の計算は ROS 2 に依存しない `hand_shape.py`、`mapping.py`、`pose_mapping.py` にまとめた |
 | `docker/` | コンテナ（Ubuntu 24.04、ROS 2 Jazzy、MediaPipe）の `Dockerfile` と `compose.yaml`、実機との接続コマンド `robot.bash`、カメラページ `camera.html` |
 | `chibamouse/` | ロボットの SD カードの作り方と、名前・Wi-Fi を設定するスクリプト |
+| `follow/` | 人追従のシミュレーション（ROS 2 Humble ＋ Gazebo Fortress）。コンテナ（`docker-compose.yml`、画面は http://localhost:6080）、パッケージ（`ros2_ws/src/wheelchair_*`）、計測の道具と結果（`RESULTS_*.md`）、解説資料（`docs/`）。2026-11-04 に chibariyo-car から移した |
 | `whill/` | WHILL Model CR とのつながりの確認（`whill_check.py`）と、踊りの指令の橋渡し（`whill_bridge.py`）、手順 |
 | `ros2_ws/tools/`、`tools/` | 記録を MP4 にする道具、ロボットの動画と検出画面を並べる道具、ダンス動画のダウンロード、書類の PDF 作り（`build_pdf.sh`）、公開してはいけない情報の検査（`check_secrets.py`） |
 | `ros2_ws/analysis/` | ダンス動画の体の動きの分析と、ロボットの動きの試算 |

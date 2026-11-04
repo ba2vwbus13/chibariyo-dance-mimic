@@ -15,4 +15,4 @@ jobs:
       - name: 公開してはいけない情報
         run: python3 tools/check_secrets.py
       - name: Python の文法
-        run: python3 -m compileall -q ros2_ws whill tools docs
+        run: python3 -m compileall -q ros2_ws whill tools docs follow
