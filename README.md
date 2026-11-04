@@ -36,7 +36,7 @@ PC（Mac）の Docker コンテナで ROS 2 Jazzy を動かし、手や体の検
 | `docker/` | コンテナ（Ubuntu 24.04、ROS 2 Jazzy、MediaPipe）の `Dockerfile` と `compose.yaml`、実機との接続コマンド `robot.bash`、カメラページ `camera.html` |
 | `chibamouse/` | ロボットの SD カードの作り方と、名前・Wi-Fi を設定するスクリプト |
 | `whill/` | WHILL Model CR とのつながりの確認（`whill_check.py`）と、踊りの指令の橋渡し（`whill_bridge.py`）、手順 |
-| `ros2_ws/tools/`、`tools/` | 記録を MP4 にする道具、ロボットの動画と検出画面を並べる道具、ダンス動画のダウンロード |
+| `ros2_ws/tools/`、`tools/` | 記録を MP4 にする道具、ロボットの動画と検出画面を並べる道具、ダンス動画のダウンロード、書類の PDF 作り（`build_pdf.sh`）、公開してはいけない情報の検査（`check_secrets.py`） |
 | `ros2_ws/analysis/` | ダンス動画の体の動きの分析と、ロボットの動きの試算 |
 | `docs/` | 設計書・操作手順書（HTML と PDF）、図（`make_figures.py` で作る）、作業記録 |
 | `media/` | デモ動画 |
@@ -61,6 +61,10 @@ ros2 launch finger_dance pose_dance.launch.py turtlesim:=true
 ```
 
 実機での手順は[操作手順書](docs/操作手順書.pdf)にある。
+
+## 共同開発
+
+変更は、ブランチを作ってプルリクエストで出す。進め方と決まり（公開してはいけない情報、ロボットを動かすときの安全）は [CONTRIBUTING.md](CONTRIBUTING.md) にまとめた。
 
 ## 使わせていただいたもの
 

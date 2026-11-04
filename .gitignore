@@ -6,3 +6,8 @@ __pycache__/
 ros2_ws/bags/
 ros2_ws/videos/
 *.MOV
+# 手元だけに置くもの（IP アドレスや Wi-Fi の名前などの本当の値。コミットしない）
+*.local.md
+local/
+# 実機の記録（whill_bridge.py --log など）。報告に使うものは研究フォルダに置く
+whill/*.csv

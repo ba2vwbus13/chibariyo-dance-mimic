@@ -1,0 +1,18 @@
+# プルリクエストと main への push のたびに、公開してはいけない情報が入っていないかと、
+# Python のファイルが文法どおりに書けているかを調べる
+name: check
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: pdftotext を入れる
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: 公開してはいけない情報
+        run: python3 tools/check_secrets.py
+      - name: Python の文法
+        run: python3 -m compileall -q ros2_ws whill tools docs
