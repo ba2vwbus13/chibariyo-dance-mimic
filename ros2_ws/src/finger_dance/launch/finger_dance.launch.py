@@ -1,7 +1,8 @@
 # 指ダンスをまとめて起動する
 #   ros2 launch finger_dance finger_dance.launch.py turtlesim:=true   … turtlesim で確かめる
 #   ros2 launch finger_dance finger_dance.launch.py                   … Raspberry Pi Mouse（robot_connect の後）
-# 引数：turtlesim（false）、rosbridge_port（9091。camera.html の ?port= と同じにする）、
+#   ros2 launch finger_dance finger_dance.launch.py robot:=whill      … WHILL Model CR（whill/whill_bridge.py を別に動かす）
+# 引数：turtlesim（false）、robot（auto・raspimouse・turtlesim・whill）、rosbridge_port（9091。camera.html の ?port= と同じにする）、
 #       view（true：rqt_image_view で検出結果を表示）、mirror（false：映像が左右反転しているとき true）
 
 from launch import LaunchDescription
@@ -16,17 +17,19 @@ def generate_launch_description():
     turtlesim = LaunchConfiguration('turtlesim')
     return LaunchDescription([
         DeclareLaunchArgument('turtlesim', default_value='false'),
+        DeclareLaunchArgument('robot', default_value='auto'),
         DeclareLaunchArgument('rosbridge_port', default_value='9091'),
         DeclareLaunchArgument('view', default_value='true'),
         DeclareLaunchArgument('mirror', default_value='false'),
 
-        # ブラウザ（camera.html）からカメラの映像を受け取る
+        # ブラウザ（camera.html）からカメラの映像を受け取る。WHILL の橋渡し（whill_bridge.py）が速度の指令を受け取るのにも使う
         Node(package='rosbridge_server', executable='rosbridge_websocket', output='screen',
              parameters=[{'port': ParameterValue(LaunchConfiguration('rosbridge_port'), value_type=int)}]),
         Node(package='finger_dance', executable='finger_detect', output='screen',
              parameters=[{'mirror': ParameterValue(LaunchConfiguration('mirror'), value_type=bool)}]),
         Node(package='finger_dance', executable='finger_dance', output='screen',
-             parameters=[{'turtlesim': ParameterValue(turtlesim, value_type=bool)}]),
+             parameters=[{'turtlesim': ParameterValue(turtlesim, value_type=bool),
+                          'robot': LaunchConfiguration('robot')}]),
         Node(package='turtlesim', executable='turtlesim_node', condition=IfCondition(turtlesim)),
         # 非圧縮の /finger_image を表示する（圧縮画像のトピック名を渡すと、起動した時点で finger_detect が
         # 見つかっていない場合に型を取り違えて何も表示されないため）

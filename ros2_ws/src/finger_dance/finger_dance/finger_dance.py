@@ -6,7 +6,8 @@
 #     グー・パー・その他・手が映らない … 停止
 #     /finger_gesture が TIMEOUT 秒届かない（カメラや検出ノードが止まった）… 停止
 #   走り出す形（人差し指・チョキ）は CONFIRM 回続けて同じ形のときに切り替え、止まる形はすぐに切り替える。
-# 送り先：Raspberry Pi Mouse は /cmd_vel（TwistStamped）、-p turtlesim:=true なら /turtle1/cmd_vel（Twist）
+# 送り先：Raspberry Pi Mouse は /cmd_vel（TwistStamped）、-p turtlesim:=true なら /turtle1/cmd_vel（Twist）、
+#         -p robot:=whill なら /cmd_vel（Twist。whill/whill_bridge.py が rosbridge で受け取り、WHILL Model CR に送る）
 # ======================================================================
 
 import json
@@ -22,6 +23,20 @@ from std_srvs.srv import SetBool
 from finger_dance.mapping import SIDE_BAND, STRAIGHT_BAND, dance_command, point_command
 
 MOVING = ('point', 'peace')
+
+# ロボットごとの既定値（パラメータで個別に変えられる）
+#   raspimouse：実機はタイヤが滑るので 0.05 m/s 以下にする（専攻科実験 R1 と同じ）
+#   whill：WHILL Model CR。linear_max・angular_max は whill_bridge.py の既定値と同じにして、
+#          指を真上・真横に向けたときに倒し量が上限（--front-cap・--side-cap）になるようにする。
+#          重い車体で、倒し量も 1 秒に 20% までしか増やさないので、踊りの左右の入れ替えは 1.0 秒ごとにする
+PRESETS = {
+    'raspimouse': dict(linear_max=0.05, angular_max=1.0, dance_angular=1.0, dance_period=0.4,
+                       stamped=True, cmd_topic='/cmd_vel', motor_power=True),
+    'turtlesim': dict(linear_max=1.0, angular_max=1.5, dance_angular=3.0, dance_period=0.4,
+                      stamped=False, cmd_topic='/turtle1/cmd_vel', motor_power=False),
+    'whill': dict(linear_max=0.1, angular_max=0.3, dance_angular=0.3, dance_period=1.0,
+                  stamped=False, cmd_topic='/cmd_vel', motor_power=False),
+}
 MESSAGES = {
     'point': '人差し指：指の向きに走る',
     'peace': 'チョキ：踊る',
@@ -38,21 +53,24 @@ class FingerDance(Node):
     def __init__(self):
         super().__init__('finger_dance')
         self.turtlesim = self.declare_parameter('turtlesim', False).value
-        sim = self.turtlesim
-        # 速さの上限（実機はタイヤが滑るので 0.05 m/s 以下にする。専攻科実験 R1 と同じ）
-        self.linear_max = self.declare_parameter('linear_max', 1.0 if sim else 0.05).value
-        self.angular_max = self.declare_parameter('angular_max', 1.5 if sim else 1.0).value
-        self.dance_angular = self.declare_parameter('dance_angular', 3.0 if sim else 1.0).value
-        self.dance_period = self.declare_parameter('dance_period', 0.4).value
+        robot = self.declare_parameter('robot', 'auto').value   # raspimouse・turtlesim・whill。auto なら turtlesim の値で決める
+        if robot == 'auto':
+            robot = 'turtlesim' if self.turtlesim else 'raspimouse'
+        if robot not in PRESETS:
+            raise ValueError(f'robot は {list(PRESETS)} のどれか: {robot}')
+        d = PRESETS[robot]
+        self.linear_max = self.declare_parameter('linear_max', d['linear_max']).value
+        self.angular_max = self.declare_parameter('angular_max', d['angular_max']).value
+        self.dance_angular = self.declare_parameter('dance_angular', d['dance_angular']).value
+        self.dance_period = self.declare_parameter('dance_period', d['dance_period']).value
         self.straight_band = self.declare_parameter('straight_band', STRAIGHT_BAND).value
         self.side_band = self.declare_parameter('side_band', SIDE_BAND).value
         self.timeout = self.declare_parameter('timeout', 0.5).value
         self.confirm = self.declare_parameter('confirm', 2).value
         self.smoothing = self.declare_parameter('smoothing', 0.5).value   # 指の向きのなめらかさ（0 = そのまま、1 に近いほどなめらか）
-        # チバリヨカーなどに使うとき：-p stamped:=false -p cmd_topic:=/cmd_vel -p motor_power:=false
-        self.stamped = self.declare_parameter('stamped', not sim).value
-        cmd_topic = self.declare_parameter('cmd_topic', '/turtle1/cmd_vel' if sim else '/cmd_vel').value
-        self.use_motor_power = self.declare_parameter('motor_power', not sim).value
+        self.stamped = self.declare_parameter('stamped', d['stamped']).value
+        cmd_topic = self.declare_parameter('cmd_topic', d['cmd_topic']).value
+        self.use_motor_power = self.declare_parameter('motor_power', d['motor_power']).value
 
         self.pub = self.create_publisher(TwistStamped if self.stamped else Twist, cmd_topic, 10)
         self.sub = self.create_subscription(String, '/finger_gesture', self.gesture_callback, 10)
@@ -65,7 +83,7 @@ class FingerDance(Node):
         self.dance_start = 0.0
         self.last_time = None        # 最後に /finger_gesture を受け取った時刻
         self.state = None            # 表示用
-        self.get_logger().info(f'送り先 {cmd_topic}（{"TwistStamped" if self.stamped else "Twist"}）、'
+        self.get_logger().info(f'ロボット {robot}、送り先 {cmd_topic}（{"TwistStamped" if self.stamped else "Twist"}）、'
                                f'前後 最大 {self.linear_max} m/s、旋回 最大 {self.angular_max} rad/s')
 
     def now(self):
@@ -140,7 +158,7 @@ class FingerDance(Node):
         self.pub.publish(msg)
 
     def motor_power(self, on):
-        # Raspberry Pi Mouse のモータの電源を入れる・切る（turtlesim では何もしない）
+        # Raspberry Pi Mouse のモータの電源を入れる・切る（turtlesim・WHILL では何もしない）
         if not self.use_motor_power:
             return
         if not self.motor_client.wait_for_service(timeout_sec=2.0):

@@ -6,7 +6,7 @@
 |---|---|---|
 | 指ダンス（finger_dance） | 手の形と人差し指の向き（MediaPipe Hand Landmarker） | 人差し指の向きで前進・旋回・後退、チョキで踊る、グー・パーで止まる |
 | ダンスの物真似（pose_dance） | 人の体の 33 点（MediaPipe Pose Landmarker）。カメラの前の人、またはダンスの動画 | 体の向きと腰の揺れで向きを変え、腰の上下で前後に揺れ、手を上げると LED が点く |
-| WHILL Model CR（試作中） | ダンスの物真似の速度の指令 | `whill/whill_bridge.py` がジョイスティックの小さな倒し量に直して電動車いすに送る。手順と安全の決まりは [whill/手順.md](whill/手順.md) |
+| WHILL Model CR（試作中） | ダンスの物真似、または指ダンスの速度の指令（`robot:=whill`） | `whill/whill_bridge.py` がジョイスティックの小さな倒し量に直して電動車いすに送る。手順と安全の決まりは [whill/手順.md](whill/手順.md) |
 
 ## デモ
 
