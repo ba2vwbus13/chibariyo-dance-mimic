@@ -4,11 +4,16 @@
 #   python3 whill_bridge.py --port /dev/cu.usbserial-XXXX
 #   python3 whill_bridge.py --dry-run          … 車いすにつながず、送るはずの値を表示するだけ（試験用）
 #   python3 whill_bridge.py --port ... --log finger.csv … 送った倒し量と左右のモータの速さを CSV に残す
+#   python whill_bridge.py --preset dance-demo --port COM3 --csv 記録/whill_live.csv
+#                                              … エイサーの物真似（pose_dance.launch.py）をデモ day の大きさで踊らせる
+#   Windows では装置名が COM3 などになる（デバイス マネージャーの「ポート (COM と LPT)」で調べる）
 #
 # 安全のための仕組み
 #   ・ジョイスティックの倒し量を小さく制限する（旋回は既定 10%、前後は既定 0% = 前後に動かない。どちらも最大 20%）。
 #     無人の追従の開発で速く動かすときだけ、--cap-limit-front（最大 45）・--cap-limit-side（最大 90）で最大を毎回指定して上げる
 #     （先生の許可 2026-11-06、旋回の 90% は 2026-11-16。後退の最大 20% は変えない）。指定しなければ最大は 20% のまま
+#     エイサーの物真似のデモ day では --preset dance-demo で、前進 55%・後退 70%・旋回 70%、
+#     1 秒に 500% まで増やす、指令が 2.5 秒届かなければ止める、にする（先生の許可 2026-11-27。無人のデモ用）
 #     速さは車いすの速度モードにも従う。前後の揺れを試すときは --front-cap 5 などを付ける
 #     指の操縦（finger_dance robot:=whill）で前後に走らせるときは --front-cap 8 から始める
 #     Model CR は同じ倒し量でも後退が前進の 1/3 ほどの速さなので、後ろ向きは --back-gain 倍（既定 3）にして釣り合わせる
@@ -20,26 +25,47 @@
 #   ・Ctrl + C で終わるときは、止めてから車いすのジョイスティックを使えるように戻す
 #   ・送っている間は車いすのジョイスティックが効かない。いざというときは車いすの電源ボタンを押す
 import argparse
+import csv
+import datetime
 import json
 import math
+import os
 import sys
 import threading
 import time
 
+# 決まった値の組。--preset で選び、ほかの引数を付ければそちらが勝つ
+PRESETS = {
+    # エイサーの物真似のデモ day 用（先生の許可 2026-11-27。人を乗せない）。担当の学生が 11/18 に実機で使った値
+    'dance-demo': dict(linear_max=0.35, angular_max=3.0, front_cap=55, side_cap=70,
+                       cap_limit_front=55, cap_limit_side=70, cap_limit_back=70, back_gain=1.3,
+                       ramp=500.0, timeout=2.5, pose_topic='/dance_pose',
+                       topic_type='geometry_msgs/msg/Twist', power_on=True),
+}
+
 ap = argparse.ArgumentParser()
-ap.add_argument('--port', help='USB-RS232C の装置名（ls /dev/cu.usbserial* で調べる）')
+ap.add_argument('--preset', choices=sorted(PRESETS), help='決まった値の組を使う（dance-demo：エイサーのデモ day 用）')
+ap.add_argument('--port', help='USB-RS232C の装置名（Mac は ls /dev/cu.usbserial* で、Windows は COM3 など）')
 ap.add_argument('--dry-run', action='store_true', help='車いすにつながず、送るはずの値を表示する')
-ap.add_argument('--rosbridge', default='ws://localhost:9091', help='rosbridge の場所')
+ap.add_argument('--power-on', action='store_true', help='つないだら車いすの電源を入れる')
+ap.add_argument('--rosbridge', default='ws://127.0.0.1:9091',
+                help='rosbridge の場所（Windows の Docker では localhost だとつながらないことがあるので 127.0.0.1）')
 ap.add_argument('--topic', default='/cmd_vel', help='速度の指令のトピック（Twist または TwistStamped）')
+ap.add_argument('--topic-type', default='',
+                help='速度の指令の型（例 geometry_msgs/msg/Twist）。付けると、まだ誰も送っていないトピックでも購読できる')
+ap.add_argument('--pose-topic', help='踊りの骨格の判定（std_msgs/String の JSON、例 /dance_pose）も受け取り、動作名を表示・記録する')
+ap.add_argument('--csv', help='送った倒し量と骨格の判定を、この CSV と、日時を付けた別の CSV（例 whill_live_20261118_122224.csv）に残す')
 ap.add_argument('--linear-max', type=float, default=0.1, help='この前後の速さ [m/s] を、倒し量の上限に当てる')
 ap.add_argument('--angular-max', type=float, default=0.3, help='この旋回の速さ [rad/s] を、倒し量の上限に当てる')
 ap.add_argument('--front-cap', type=int, default=0, help='前後の倒し量の上限 [パーセント]（既定 0 = 前後に動かない。最大は --cap-limit-front、既定 20）')
 ap.add_argument('--side-cap', type=int, default=10, help='旋回の倒し量の上限 [パーセント]（最大は --cap-limit-side、既定 20）')
 ap.add_argument('--cap-limit-front', type=int, default=20,
-                help='--front-cap の最大 [パーセント]（既定 20、最大 45）。無人の開発用。前進だけで、後退の最大 20%% は変えない')
+                help='--front-cap の最大 [パーセント]（既定 20、最大 55）。無人の開発用。前進だけ')
 ap.add_argument('--cap-limit-side', type=int, default=20, help='--side-cap の最大 [パーセント]（既定 20、最大 90）。無人の開発用')
+ap.add_argument('--cap-limit-back', type=int, default=20, help='後退の倒し量の最大 [パーセント]（既定 20、最大 70）。無人の開発用')
 ap.add_argument('--back-gain', type=float, default=3.0,
-                help='後ろ向きの倒し量を何倍にするか。Model CR は同じ倒し量だと後退が前進の 1/3 ほどの速さなので 3（最大 20%%）')
+                help='後ろ向きの倒し量を何倍にするか。Model CR は同じ倒し量だと後退が前進の 1/3 ほどの速さなので 3'
+                '（最大は --cap-limit-back、既定 20%%）')
 ap.add_argument('--side-sign', type=int, default=-1, choices=(-1, 1),
                 help='ROS の左回り（+）を、車いすの side の符号に直す。pywhill では side + が右回りなので -1')
 ap.add_argument('--ramp', type=float, default=20.0, help='倒し量を増やす速さの上限 [パーセント/秒]')
@@ -49,9 +75,16 @@ ap.add_argument('--log', help='送った倒し量と左右のモータの速さ�
 ap.add_argument('--log-motor', help='車いすから状態が届くたびに、左右のモータの角度・速さと車いすの計測の時刻を、この CSV ファイルに残す'
                 '（指令には関係しない。速さの値は精度が低いので、正確な速さは角度と時刻から出す）')
 ap.add_argument('--stream-ms', type=int, default=100, help='車いすが状態を送る間隔 [ms]（10〜1000。既定 100。--log-motor で細かく見るときは 20 など）')
+pre, _ = ap.parse_known_args()
+if pre.preset:
+    ap.set_defaults(**PRESETS[pre.preset])
 args = ap.parse_args()
-CAP_LIMIT_FRONT = max(0, min(45, args.cap_limit_front))
+if args.preset:
+    print(f'--preset {args.preset}：先生の許可を受けた無人のデモ用の値です。人を乗せない・周り 1 m 以上を空ける・'
+          f'電源ボタンを押せる人をそばに置く')
+CAP_LIMIT_FRONT = max(0, min(55, args.cap_limit_front))
 CAP_LIMIT_SIDE = max(0, min(90, args.cap_limit_side))
+BACK_CAP = max(0, min(70, args.cap_limit_back))
 FRONT_CAP = max(0, min(CAP_LIMIT_FRONT, args.front_cap))
 SIDE_CAP = max(0, min(CAP_LIMIT_SIDE, args.side_cap))
 if FRONT_CAP != args.front_cap or SIDE_CAP != args.side_cap:
@@ -61,7 +94,7 @@ if not args.dry_run and not args.port:
 
 import websocket   # noqa: E402  （websocket-client）
 
-state = {'v': 0.0, 'w': 0.0, 't': 0.0, 'stopped': False, 'connected': False}
+state = {'v': 0.0, 'w': 0.0, 't': 0.0, 'stopped': False, 'connected': False, 'pose': {}}
 lock = threading.Lock()
 
 
@@ -70,6 +103,15 @@ def on_message(_ws, message):
     if d.get('op') != 'publish':
         return
     m = d.get('msg', {})
+    if args.pose_topic and d.get('topic', '').lstrip('/') == args.pose_topic.lstrip('/'):
+        try:                         # 骨格の判定は表示と記録だけに使う（指令には使わない）
+            pose = json.loads(m.get('data', '{}'))
+        except (TypeError, ValueError):
+            return
+        if isinstance(pose, dict):
+            with lock:
+                state['pose'] = pose
+        return
     tw = m.get('twist', m)          # TwistStamped なら twist の中、Twist ならそのまま
     v = float(tw.get('linear', {}).get('x', 0.0))
     w = float(tw.get('angular', {}).get('z', 0.0))
@@ -86,7 +128,13 @@ def ros_thread():
     while True:
         try:
             ws = websocket.create_connection(args.rosbridge, timeout=5)
-            ws.send(json.dumps({'op': 'subscribe', 'topic': args.topic, 'throttle_rate': 0, 'queue_length': 1}))
+            sub = {'op': 'subscribe', 'topic': args.topic, 'throttle_rate': 0, 'queue_length': 1}
+            if args.topic_type:
+                sub['type'] = args.topic_type
+            ws.send(json.dumps(sub))
+            if args.pose_topic:      # 追従の pose_follow_whill.py は購読を 1 つしか覚えないので、付けたときだけ
+                ws.send(json.dumps({'op': 'subscribe', 'topic': args.pose_topic, 'type': 'std_msgs/msg/String',
+                                    'throttle_rate': 0, 'queue_length': 1}))
             with lock:
                 state['connected'] = True
             ws.settimeout(1.0)
@@ -120,20 +168,32 @@ def approach(cur, target, step):
     return cur + clip(target - cur, -step, step) if abs(target) > abs(cur) else target
 
 
+def action_name(pose):
+    # 踊りのプログラムが送る判定から、いまの動作名を決める（しこ立ち > ターン > 足上げ > ステップ の順）
+    for key, name in (('squat', 'しこ立ち'), ('turn', 'ターン'), ('l_knee_lift', '足上げ'), ('r_knee_lift', '足上げ'),
+                      ('r_step_fwd', '右足ステップ'), ('l_step_back', '左足ステップ')):
+        if pose.get(key):
+            return pose.get('action_name', name)
+    return pose.get('action_name', '踊っている')
+
+
 whill = None
 if not args.dry_run:
     from whill import ComWHILL
     whill = ComWHILL(port=args.port)
+    if args.power_on:
+        whill.send_power_on()
+        time.sleep(0.2)
     whill.start_data_stream(max(10, min(1000, args.stream_ms)))
 
 threading.Thread(target=ros_thread, daemon=True).start()
 threading.Thread(target=key_thread, daemon=True).start()
-print(f'rosbridge {args.rosbridge} の {args.topic} を受け取り、倒し量 前 {FRONT_CAP}%・後ろ {min(20, round(FRONT_CAP * args.back_gain))}%・旋回 ±{SIDE_CAP}% で送ります。'
+print(f'rosbridge {args.rosbridge} の {args.topic} を受け取り、倒し量 前 {FRONT_CAP}%・後ろ {min(BACK_CAP, round(FRONT_CAP * args.back_gain))}%・旋回 ±{SIDE_CAP}% で送ります。'
       f'Enter で停止・再開、Ctrl + C で終了。')
 
 log = None
 if args.log:
-    log = open(args.log, 'w', buffering=1)
+    log = open(args.log, 'w', buffering=1, encoding='utf-8')   # Windows でも Mac と同じ UTF-8 で書く
     # 速さは m/s にそろえる（left_mps・right_mps）。昨日までの記録と比べられるように km/h の列も残す
     log.write('time_s,state,v_mps,w_radps,front_pct,side_pct,left_kmh,right_kmh,battery_pct,left_mps,right_mps\n')
 start = time.monotonic()
@@ -142,7 +202,7 @@ start = time.monotonic()
 # 角度は 0.001 rad（±π で巻き戻る）、counter は車いすの計測の時刻（Model CR は ms、200 で 0 に戻る）
 motor_log = None
 if args.log_motor and whill is not None:
-    motor_log = open(args.log_motor, 'w', buffering=1)
+    motor_log = open(args.log_motor, 'w', buffering=1, encoding='utf-8')
     motor_log.write(f'# stream_ms={max(10, min(1000, args.stream_ms))}\n')
     motor_log.write('time_s,seq,counter,left_angle_rad,right_angle_rad,left_kmh,right_kmh,left_mps,right_mps\n')
 
@@ -153,6 +213,41 @@ if args.log_motor and whill is not None:
                         f'{whill.left_motor["speed"] / 3.6:.4f},{whill.right_motor["speed"] / 3.6:.4f}\n')
     whill.register_callback('data_set_1', on_data_set_1)
 
+# 踊りの記録（--csv）: 指定した名前と、日時を付けた名前の 2 つに同じ行を書く。Excel で開けるように BOM 付き
+CSV_HEAD = ['t', 'ok', 'action', 'whill_front_pct', 'whill_side_pct', 'whill_front_raw', 'whill_side_raw', 'v', 'w',
+            'heading_target', 'forward_target', 'yaw', 'dproj_a',
+            'squat', 'turn', 'l_knee_lift', 'r_knee_lift', 'r_step_fwd', 'l_step_back', 'l_up', 'r_up',
+            'hip_x', 'hip_y', 'r_knee_x', 'r_knee_y', 'l_knee_x', 'l_knee_y', 'r_ankle_x', 'r_ankle_y', 'l_ankle_x', 'l_ankle_y']
+csv_files = []
+if args.csv:
+    base_csv = os.path.abspath(args.csv)
+    os.makedirs(os.path.dirname(base_csv), exist_ok=True)
+    stem, ext = os.path.splitext(base_csv)
+    ts_csv = f'{stem}_{datetime.datetime.now():%Y%m%d_%H%M%S}{ext or ".csv"}'
+    for cpath in (ts_csv, base_csv):
+        fo = open(cpath, 'w', newline='', encoding='utf-8-sig')
+        csv_files.append((fo, csv.writer(fo)))
+        csv_files[-1][1].writerow(CSV_HEAD)
+    print(f'記録する CSV：{ts_csv}')
+
+
+def csv_row(t, fresh, why, f, s, front, side, v, w, pose):
+    ok = 1 if (fresh and pose.get('ok')) else 0
+    iw = float(pose.get('img_w', 320.0)) or 320.0
+    ih = float(pose.get('img_h', 240.0)) or 240.0
+
+    def num(k, ndigits, denom=1.0, empty=''):
+        return round(float(pose[k]) / denom, ndigits) if (ok and k in pose) else empty
+
+    flags = [int(bool(ok and pose.get(k))) for k in ('squat', 'turn', 'l_knee_lift', 'r_knee_lift', 'r_step_fwd',
+                                                     'l_step_back', 'l_up', 'r_up')]
+    pts = [num(f'{k}_{a}', 4, iw if a == 'x' else ih)
+           for k in ('hip', 'r_knee', 'l_knee', 'r_ankle', 'l_ankle') for a in ('x', 'y')]
+    return [round(t, 2), ok, why, f, s, round(front, 2), round(side, 2), round(v, 4), round(w, 4),
+            num('heading_target', 2, empty=0.0), num('forward_target', 4, empty=0.0), num('yaw', 2), num('dproj_a', 4),
+            *flags, *pts]
+
+
 front = side = 0.0
 period = 1.0 / args.rate
 try:
@@ -160,6 +255,7 @@ try:
         t0 = time.monotonic()
         with lock:
             v, w, t, stopped, connected = state['v'], state['w'], state['t'], state['stopped'], state['connected']
+            pose = dict(state['pose'])
         fresh = connected and (t0 - t) <= args.timeout
         if stopped or not fresh:
             front = side = 0.0                       # 止めるときはすぐ 0
@@ -167,14 +263,14 @@ try:
         else:
             tf = clip(v / args.linear_max, -1, 1) * FRONT_CAP
             if tf < 0:
-                tf = max(-20.0, tf * args.back_gain)  # 後退は遅いので倒し量を増やす（20% を超えない）
+                tf = max(-float(BACK_CAP), tf * args.back_gain)  # 後退は遅いので倒し量を増やす（--cap-limit-back を超えない）
             ts = args.side_sign * clip(w / args.angular_max, -1, 1) * SIDE_CAP
             step = args.ramp * period                # 増やすときはゆっくり
             # 後退は倒し量を back-gain 倍にしているので、増やす速さも同じ倍にする（車いすの速さの上がり方は前進と同じ）
             fstep = step * max(1.0, args.back_gain) if tf < 0 else step
             front = approach(front, tf, fstep)
             side = approach(side, ts, step)
-            why = '動いている'
+            why = action_name(pose) if args.pose_topic else '動いている'
         f, s = int(round(front)), int(round(side))
         info = ''
         if whill is not None:
@@ -188,7 +284,12 @@ try:
                 lm, rm, bat = whill.left_motor['speed'], whill.right_motor['speed'], whill.battery['level']
                 lms, rms = f'{lm / 3.6:.4f}', f'{rm / 3.6:.4f}'
             log.write(f'{t0 - start:.2f},{why},{v:.3f},{w:.3f},{f},{s},{lm},{rm},{bat},{lms},{rms}\n')
-        print(f'{why:10s} 指令 v={v:+.3f} m/s ω={w:+.2f} rad/s → 前後 {f:+3d}% 旋回 {s:+3d}%{info}   ', end='\r', flush=True)
+        if csv_files:
+            row = csv_row(t0 - start, fresh, why, f, s, front, side, v, w, pose)
+            for fo, wr in csv_files:
+                wr.writerow(row)
+                fo.flush()
+        print(f'{why:12s} 指令 v={v:+.3f} m/s ω={w:+.2f} rad/s → 前後 {f:+3d}% 旋回 {s:+3d}%{info}   ', end='\r', flush=True)
         time.sleep(max(0.0, period - (time.monotonic() - t0)))
 except KeyboardInterrupt:
     pass
@@ -204,6 +305,10 @@ finally:
     if log is not None:
         log.close()
         print(f'記録：{args.log}')
+    for fo, _ in csv_files:
+        fo.close()
+    if csv_files:
+        print(f'踊りの記録：{ts_csv}')
     if motor_log is not None:
         whill.register_callback('data_set_1', None)
         motor_log.close()

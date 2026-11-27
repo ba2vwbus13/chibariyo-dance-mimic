@@ -4,7 +4,7 @@ import csv, math, sys
 import cv2, mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
-MODEL = '/tmp/pose_full.task'
+MODEL = '/opt/finger_dance/pose_landmarker_full.task'
 src, out = sys.argv[1], sys.argv[2]
 cap = cv2.VideoCapture(src); fps = cap.get(cv2.CAP_PROP_FPS)
 lm = vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(

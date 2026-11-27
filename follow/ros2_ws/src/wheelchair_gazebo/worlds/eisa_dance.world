@@ -1,0 +1,127 @@
+<?xml version="1.0"?>
+<!-- エイサー（ダンス物まね）専用 軽量ワールド (人モデルなし・カメラ/LiDARセンサ描画なし) -->
+<sdf version="1.7">
+  <world name="eisa_dance">
+
+    <!-- 物理演算・スポーン・画面描画のみ（重いSensorsプラグインを除外して高速化） -->
+    <plugin filename="ignition-gazebo-physics-system"
+            name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="ignition-gazebo-user-commands-system"
+            name="ignition::gazebo::systems::UserCommands"/>
+    <plugin filename="ignition-gazebo-scene-broadcaster-system"
+            name="ignition::gazebo::systems::SceneBroadcaster"/>
+
+    <!-- GUIカメラの初期視点を車いす(0,0,0)が見やすい斜め前方に設定 -->
+    <gui fullscreen="0">
+      <plugin filename="MinimalScene" name="3D View">
+        <ignition-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">docked</property>
+        </ignition-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>0.5 0.5 0.5</ambient_light>
+        <background_color>0.82 0.88 0.94</background_color>
+        <camera_pose>1.8 -1.8 1.25 0 0.38 2.35</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager">
+        <ignition-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </ignition-gui>
+      </plugin>
+      <plugin filename="InteractiveViewControl" name="Interactive view control">
+        <ignition-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </ignition-gui>
+      </plugin>
+      <plugin filename="WorldControl" name="World control">
+        <ignition-gui>
+          <title>World control</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">72</property>
+          <property type="double" key="width">121</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </ignition-gui>
+        <play_pause>true</play_pause>
+        <step>true</step>
+        <start_paused>false</start_paused>
+      </plugin>
+    </gui>
+
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.4 0.2 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+          <material>
+            <ambient>0.86 0.88 0.90 1</ambient>
+            <diffuse>0.86 0.88 0.90 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 車いすの前後ステップ・旋回がひと目でわかる床面マーカー（物理衝突なし） -->
+    <model name="dance_stage_markers">
+      <static>true</static>
+      <link name="link">
+        <!-- 初期位置（中央・青ライン） -->
+        <visual name="center_line">
+          <pose>0 0 0.002 0 0 0</pose>
+          <geometry><box><size>0.04 1.6 0.002</size></box></geometry>
+          <material><ambient>0.1 0.4 0.8 1</ambient><diffuse>0.1 0.4 0.8 1</diffuse></material>
+        </visual>
+        <!-- 前進ステップ目標位置 (+0.54m・緑ライン) -->
+        <visual name="front_step_line">
+          <pose>0.54 0 0.002 0 0 0</pose>
+          <geometry><box><size>0.04 1.4 0.002</size></box></geometry>
+          <material><ambient>0.1 0.7 0.3 1</ambient><diffuse>0.1 0.7 0.3 1</diffuse></material>
+        </visual>
+        <!-- 後退ステップ・しこ立ち目標位置 (-0.54m・オレンジライン) -->
+        <visual name="back_step_line">
+          <pose>-0.54 0 0.002 0 0 0</pose>
+          <geometry><box><size>0.04 1.4 0.002</size></box></geometry>
+          <material><ambient>0.9 0.4 0.1 1</ambient><diffuse>0.9 0.4 0.1 1</diffuse></material>
+        </visual>
+        <!-- 進行方向軸（白ライン） -->
+        <visual name="forward_axis">
+          <pose>0 0 0.001 0 0 0</pose>
+          <geometry><box><size>1.6 0.03 0.002</size></box></geometry>
+          <material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <physics type="ode">
+      <max_step_size>0.008</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+  </world>
+</sdf>

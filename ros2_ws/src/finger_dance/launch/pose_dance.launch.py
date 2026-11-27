@@ -20,13 +20,14 @@ DEFAULT_VIDEO = '/home/ubuntu/ros2_ws/videos/pexels_7571381_man_studio.mp4'
 def generate_launch_description():
     turtlesim = LaunchConfiguration('turtlesim')
     return LaunchDescription([
-        DeclareLaunchArgument('source', default_value='video'),
+        DeclareLaunchArgument('source', default_value='camera'),
         DeclareLaunchArgument('file', default_value=DEFAULT_VIDEO),
         DeclareLaunchArgument('turtlesim', default_value='false'),
         DeclareLaunchArgument('robot', default_value='auto'),
         DeclareLaunchArgument('delay', default_value='0.0'),
-        DeclareLaunchArgument('view', default_value='true'),
+        DeclareLaunchArgument('view', default_value='false'),
         DeclareLaunchArgument('rosbridge_port', default_value='9091'),
+        DeclareLaunchArgument('csv', default_value='/home/ubuntu/ros2_ws/analysis/live_camera_dance.csv'),
 
         # 映像の入り口：動画ファイル（video）か、ブラウザのカメラページ（camera）
         Node(package='finger_dance', executable='video_source', output='screen',
@@ -39,7 +40,8 @@ def generate_launch_description():
         Node(package='finger_dance', executable='pose_dance', output='screen',
              parameters=[{'turtlesim': ParameterValue(turtlesim, value_type=bool),
                           'robot': LaunchConfiguration('robot'),
-                          'delay': ParameterValue(LaunchConfiguration('delay'), value_type=float)}]),
+                          'delay': ParameterValue(LaunchConfiguration('delay'), value_type=float),
+                          'csv': LaunchConfiguration('csv')}]),
         Node(package='turtlesim', executable='turtlesim_node', condition=IfCondition(turtlesim)),
         Node(package='rqt_image_view', executable='rqt_image_view', arguments=['/pose_image'],
              condition=IfCondition(LaunchConfiguration('view'))),

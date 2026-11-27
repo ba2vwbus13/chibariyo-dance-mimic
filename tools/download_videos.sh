@@ -3,7 +3,11 @@
 #   tools/download_videos.sh
 set -e
 cd "$(dirname "$0")/../ros2_ws" && mkdir -p videos && cd videos
-get() { [ -f "$1" ] && { echo "あり: $1"; return; }; echo "取得: $1"; curl -sSfL -o "$1" "$2"; }
+# Windows（Git Bash）の curl は、証明書の取り消しを確かめる先に届かないと止まる（CRYPT_E_REVOCATION_OFFLINE）。
+# そのときは確かめられる範囲で確かめて進む（--ssl-revoke-best-effort。Windows の curl にだけある）
+CURL_OPTS=()
+curl -V | grep -qi schannel && CURL_OPTS=(--ssl-revoke-best-effort)
+get() { [ -f "$1" ] && { echo "あり: $1"; return; }; echo "取得: $1"; curl -sSfL "${CURL_OPTS[@]}" -o "$1" "$2"; }
 get pexels_7571381_man_studio.mp4          https://videos.pexels.com/video-files/7571381/7571381-sd_960_506_25fps.mp4    # Antoni Shkraba「Video of a Man Dancing」
 get pexels_7570258_woman_studio.mp4        https://videos.pexels.com/video-files/7570258/7570258-sd_506_960_25fps.mp4    # Antoni Shkraba「Woman Dancing」
 get pexels_6939968_woman_contemporary.mp4  https://videos.pexels.com/video-files/6939968/6939968-sd_540_960_30fps.mp4    # Pavel Danilyuk「A Woman Dancing Gracefully」

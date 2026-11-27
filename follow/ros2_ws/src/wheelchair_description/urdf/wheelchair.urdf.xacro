@@ -102,12 +102,12 @@
   <xacro:drive_wheel prefix="left"  y_pos="${wheel_sep/2}"/>
   <xacro:drive_wheel prefix="right" y_pos="${-wheel_sep/2}"/>
 
-  <!-- ===== 前キャスタ(左右) ===== -->
-  <xacro:macro name="caster" params="prefix y_pos">
+  <!-- ===== 前後キャスタ(左右・後退や急発進時のウィリー転倒防止) ===== -->
+  <xacro:macro name="caster" params="prefix x_pos y_pos">
     <joint name="${prefix}_caster_joint" type="fixed">
       <parent link="base_link"/>
       <child link="${prefix}_caster_link"/>
-      <origin xyz="0.2 ${y_pos} ${-wheel_radius+caster_radius}" rpy="0 0 0"/>
+      <origin xyz="${x_pos} ${y_pos} ${-wheel_radius+caster_radius}" rpy="0 0 0"/>
     </joint>
     <link name="${prefix}_caster_link">
       <visual>
@@ -124,8 +124,10 @@
       <mu2>0.0</mu2>
     </gazebo>
   </xacro:macro>
-  <xacro:caster prefix="front_left"  y_pos="0.18"/>
-  <xacro:caster prefix="front_right" y_pos="-0.18"/>
+  <xacro:caster prefix="front_left"  x_pos="0.22"  y_pos="0.18"/>
+  <xacro:caster prefix="front_right" x_pos="0.22"  y_pos="-0.18"/>
+  <xacro:caster prefix="rear_left"   x_pos="-0.24" y_pos="0.18"/>
+  <xacro:caster prefix="rear_right"  x_pos="-0.24" y_pos="-0.18"/>
 
   <!-- ===== 2D LiDAR ===== -->
   <joint name="lidar_joint" type="fixed">

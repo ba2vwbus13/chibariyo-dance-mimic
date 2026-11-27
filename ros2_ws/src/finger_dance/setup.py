@@ -26,6 +26,7 @@ setup(
             'video_source = finger_dance.video_source:main',
             'pose_detect = finger_dance.pose_detect:main',
             'pose_dance = finger_dance.pose_dance:main',
+            'dj_pose_dance = finger_dance.dj_pose_dance:main',
         ],
     },
 )

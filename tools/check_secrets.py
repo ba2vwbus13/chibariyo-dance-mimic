@@ -3,6 +3,8 @@
 #   python3 tools/check_secrets.py          … コミットの前に手元で実行する
 #   GitHub Actions でも、プルリクエストのたびに実行する（.github/workflows/check.yml）
 # PDF は pdftotext で文字を取り出して調べる（pdftotext がなければ飛ばす）
+# 調べるのはコミットされうるファイルだけ（git が追っているものと、.gitignore に入っていない新しいもの）。
+# Windows でリポジトリの中に .venv を作っても、ライブラリの中までは調べない
 import os
 import re
 import shutil
@@ -12,32 +14,48 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEXT_EXT = {'.md', '.html', '.py', '.svg', '.sh', '.bash', '.yaml', '.yml', '.xml', '.cfg', '.txt', '.css', '.csv',
             '.json', '.toml', '.launch', ''}
-SKIP_DIRS = {'.git', 'build', 'install', 'log', '__pycache__', 'bags', 'videos'}
+SKIP_DIRS = {'.git', 'build', 'install', 'log', '__pycache__', 'bags', 'videos', '.venv', 'venv', 'node_modules'}
 PATTERNS = [
     ('IP アドレス', re.compile(r'\b(192\.168|10\.100|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+\b')),
     ('Wi-Fi の名前', re.compile(r'Buffalo-[0-9A-Za-z-]+')),
     ('MAC アドレス', re.compile(r'\b([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b')),
     ('メールアドレス', re.compile(r'[A-Za-z0-9._%+-]+@(gmail\.com|[A-Za-z0-9-]+\.ac\.jp|[A-Za-z0-9-]+\.kosen-ac\.jp)')),
-    ('手元のフォルダの場所', re.compile(r'/Users/[A-Za-z0-9_.-]+|/home/(?!ubuntu\b)[a-z][a-z0-9_-]+')),
+    ('手元のフォルダの場所', re.compile(r'/Users/[A-Za-z0-9_.-]+|/home/(?!ubuntu\b)[a-z][a-z0-9_-]+'
+                                  r'|\b[A-Za-z]:\\{1,2}Users\\{1,2}(?!Public\b)[A-Za-z0-9_.-]+')),
 ]
 SELF = os.path.relpath(os.path.abspath(__file__), ROOT)
 
 
-def texts():
+def candidates():
+    # git が使えれば、コミットされうるファイルだけを返す。使えなければ、フォルダを全部たどる
+    try:
+        out = subprocess.run(['git', '-C', ROOT, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+                             capture_output=True, check=True).stdout
+        for rel in out.decode('utf-8', errors='replace').split('\0'):
+            if rel and not set(rel.split('/')) & SKIP_DIRS and os.path.isfile(os.path.join(ROOT, rel)):
+                yield os.path.normpath(rel)
+        return
+    except (OSError, subprocess.CalledProcessError):
+        pass
     for root, dirs, files in os.walk(ROOT):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for f in files:
-            p = os.path.join(root, f)
-            rel = os.path.relpath(p, ROOT)
-            if rel == SELF or f.endswith('.local.md') or rel.startswith('local' + os.sep):
-                continue
-            ext = os.path.splitext(f)[1].lower()
-            if ext == '.pdf':
-                if shutil.which('pdftotext'):
-                    yield rel, subprocess.run(['pdftotext', p, '-'], capture_output=True, text=True).stdout
-            elif ext in TEXT_EXT:
-                with open(p, encoding='utf-8', errors='ignore') as fp:
-                    yield rel, fp.read()
+            yield os.path.relpath(os.path.join(root, f), ROOT)
+
+
+def texts():
+    for rel in candidates():
+        p = os.path.join(ROOT, rel)
+        f = os.path.basename(rel)
+        if rel == SELF or f.endswith('.local.md') or rel.startswith('local' + os.sep):
+            continue
+        ext = os.path.splitext(f)[1].lower()
+        if ext == '.pdf':
+            if shutil.which('pdftotext'):
+                yield rel, subprocess.run(['pdftotext', p, '-'], capture_output=True, text=True).stdout
+        elif ext in TEXT_EXT:
+            with open(p, encoding='utf-8', errors='ignore') as fp:
+                yield rel, fp.read()
 
 
 def main():
