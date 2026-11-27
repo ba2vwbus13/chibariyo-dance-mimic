@@ -578,7 +578,8 @@ def draw_topdown(canvas, m_list, m_idx, l_list, l_idx, plot_rect):
     draw_triangle(s1_cx0 + l_cur["s1_x"], l_cur["s1_y"], l_cur["s1_h"], (180, 130, 18))
 
 
-def render_comparison(m_list, l_list, start_t, end_t, out_path, fps=15.0):
+def render_comparison(m_list, l_list, start_t, end_t, out_path, fps=15.0,
+                      miruku_name="mirukumunari_dance", live_name="whill_live"):
     W, H = 1280, 720
     font_title = get_jp_font(20, bold=False)
     font_label = get_jp_font(15, bold=False)
@@ -596,7 +597,7 @@ def render_comparison(m_list, l_list, start_t, end_t, out_path, fps=15.0):
     bg_pil = Image.fromarray(cv2.cvtColor(bg, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(bg_pil)
 
-    draw.text((294, 200), "カメラから見た踊る人 (mirukumunari_dance.csv)", font=font_title, fill=(20, 20, 20), anchor="mm")
+    draw.text((294, 200), f"カメラから見た踊る人 ({miruku_name}.csv)", font=font_title, fill=(20, 20, 20), anchor="mm")
     draw.text((934, 152), "WHILL を上から見た動き (お手本 vs whill_live)", font=font_title, fill=(20, 20, 20), anchor="mm")
 
     px0, py0, px1, py1 = right_box
@@ -619,8 +620,8 @@ def render_comparison(m_list, l_list, start_t, end_t, out_path, fps=15.0):
     u_t = (-1.05 - x_min) / (x_max - x_min)
     u_s1 = (0.85 - x_min) / (x_max - x_min)
     y_leg = int(round(py0 + ((y_max - (-1.02)) / (y_max - y_min)) * ph))
-    draw.text((int(round(px0 + u_t * pw)), y_leg), "お手本 (mirukumunari_dance.csv)", font=font_label, fill=(135, 140, 146), anchor="mm")
-    draw.text((int(round(px0 + u_s1 * pw)), y_leg), "第1段階 (whill_live_20261118_122224)", font=font_label, fill=(18, 130, 180), anchor="mm")
+    draw.text((int(round(px0 + u_t * pw)), y_leg), f"お手本 ({miruku_name}.csv)", font=font_label, fill=(135, 140, 146), anchor="mm")
+    draw.text((int(round(px0 + u_s1 * pw)), y_leg), f"第1段階 ({live_name})", font=font_label, fill=(18, 130, 180), anchor="mm")
 
     base_bgr = cv2.cvtColor(np.array(bg_pil), cv2.COLOR_RGB2BGR)
 
@@ -691,11 +692,13 @@ def main():
     print(f"Loaded whill_live (filtered): {len(l_list)} rows (0..{l_list[-1]['t']}s)")
 
     # 1) 動きが一番豊富な30秒間ハイライト (ダンス時刻 15.0s〜45.0s)
-    render_comparison(m_list, l_list, 15.0, 45.0, OUT_30S, fps=15.0)
+    names = dict(miruku_name=os.path.splitext(os.path.basename(miruku_csv))[0],
+                 live_name=os.path.splitext(os.path.basename(live_csv))[0])
+    render_comparison(m_list, l_list, 15.0, 45.0, OUT_30S, fps=15.0, **names)
 
     # 2) 全編動画 (ダンス時刻 0.0s〜220.0s, 10fps で軽快に全編再生)
     max_t = min(m_list[-1]["t"], l_list[-1]["t"])
-    render_comparison(m_list, l_list, 0.0, max_t, OUT_FULL, fps=10.0)
+    render_comparison(m_list, l_list, 0.0, max_t, OUT_FULL, fps=10.0, **names)
 
 
 if __name__ == "__main__":
