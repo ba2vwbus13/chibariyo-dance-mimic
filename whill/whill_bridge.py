@@ -193,7 +193,7 @@ print(f'rosbridge {args.rosbridge} の {args.topic} を受け取り、倒し量 
 
 log = None
 if args.log:
-    log = open(args.log, 'w', buffering=1)
+    log = open(args.log, 'w', buffering=1, encoding='utf-8')   # Windows でも Mac と同じ UTF-8 で書く
     # 速さは m/s にそろえる（left_mps・right_mps）。昨日までの記録と比べられるように km/h の列も残す
     log.write('time_s,state,v_mps,w_radps,front_pct,side_pct,left_kmh,right_kmh,battery_pct,left_mps,right_mps\n')
 start = time.monotonic()
@@ -202,7 +202,7 @@ start = time.monotonic()
 # 角度は 0.001 rad（±π で巻き戻る）、counter は車いすの計測の時刻（Model CR は ms、200 で 0 に戻る）
 motor_log = None
 if args.log_motor and whill is not None:
-    motor_log = open(args.log_motor, 'w', buffering=1)
+    motor_log = open(args.log_motor, 'w', buffering=1, encoding='utf-8')
     motor_log.write(f'# stream_ms={max(10, min(1000, args.stream_ms))}\n')
     motor_log.write('time_s,seq,counter,left_angle_rad,right_angle_rad,left_kmh,right_kmh,left_mps,right_mps\n')
 

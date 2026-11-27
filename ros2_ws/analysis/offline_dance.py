@@ -2,6 +2,7 @@
 # エイサーの判定動作名・関節座標・特徴量・車いすの速度指令を CSV に出力する（コンテナで実行）。
 # 使い方:
 #   python3 ~/ros2_ws/analysis/offline_dance.py ~/ros2_ws/videos/mirukumunari.mp4 ~/ros2_ws/analysis/mirukumunari_dance.csv
+#   コンテナの外（Windows・Mac）でも、モデルをリポジトリの local/ に置けば動く（または環境変数 POSE_MODEL で場所を指定）
 import csv
 import os
 import sys
@@ -17,7 +18,10 @@ import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))   # リポジトリのいちばん上
 sys.path.insert(0, '/home/ubuntu/ros2_ws/src/finger_dance')
+sys.path.insert(0, os.path.join(ROOT, 'ros2_ws', 'src', 'finger_dance'))   # コンテナの外（Windows・Mac）で動かすとき
 import finger_dance.pose_mapping as pm
 from finger_dance.pose_mapping import DanceMapper, Follower, features
 
@@ -31,11 +35,13 @@ def letterbox(img, width=640, height=480):
     return out
 
 MODEL_PATHS = [
+    os.environ.get('POSE_MODEL', ''),                                  # 場所を指定するとき
     '/opt/finger_dance/pose_landmarker_full.task',
+    os.path.join(ROOT, 'local', 'pose_landmarker_full.task'),          # コンテナの外では、リポジトリの local/ に置く
     '/home/ubuntu/ros2_ws/models/pose_landmarker_lite.task',
     '/opt/finger_dance/pose_landmarker_lite.task',
 ]
-MODEL = next((p for p in MODEL_PATHS if os.path.exists(p)), MODEL_PATHS[0])
+MODEL = next((p for p in MODEL_PATHS if p and os.path.exists(p)), MODEL_PATHS[1])
 
 src = sys.argv[1]
 out = sys.argv[2] if len(sys.argv) > 2 else os.path.splitext(src)[0] + '_dance.csv'
