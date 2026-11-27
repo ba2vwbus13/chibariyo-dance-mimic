@@ -24,3 +24,6 @@ follow/ros2_ws/metrics/*
 follow/ros2_ws/metrics_pose/*
 !follow/ros2_ws/metrics_pose/RESULTS_*.md
 !follow/ros2_ws/metrics_pose/run_follow.sh
+# Python の仮の環境（Windows でリポジトリの中に作ったとき）
+.venv/
+venv/
