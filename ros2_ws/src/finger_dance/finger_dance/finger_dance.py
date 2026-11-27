@@ -53,9 +53,9 @@ class FingerDance(Node):
     def __init__(self):
         super().__init__('finger_dance')
         self.turtlesim = self.declare_parameter('turtlesim', False).value
-        robot = self.declare_parameter('robot', 'auto').value   # raspimouse・turtlesim・whill。auto なら turtlesim の値で決める
+        robot = self.declare_parameter('robot', 'whill').value   # whill・raspimouse・turtlesim。auto なら turtlesim または whill
         if robot == 'auto':
-            robot = 'turtlesim' if self.turtlesim else 'raspimouse'
+            robot = 'turtlesim' if self.turtlesim else 'whill'
         if robot not in PRESETS:
             raise ValueError(f'robot は {list(PRESETS)} のどれか: {robot}')
         d = PRESETS[robot]

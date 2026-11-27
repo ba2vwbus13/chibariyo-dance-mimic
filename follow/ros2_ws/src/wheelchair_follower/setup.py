@@ -29,6 +29,7 @@ setup(
             'yolo_reid_follower = wheelchair_follower.yolo_reid_follower_node:main',
             'metrics_logger = wheelchair_follower.metrics_logger_node:main',
             'pose_follower = wheelchair_follower.pose_follower_node:main',
+            'eisa_dance = wheelchair_follower.eisa_dance_node:main',
         ],
     },
 )
