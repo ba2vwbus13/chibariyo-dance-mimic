@@ -1,0 +1,8 @@
+# Libraries for the WHILL Model CR bridge (whill_bridge.py), check (whill_check.py), speed profile (whill_profile.py), analysis (motor_speed.py)
+#   python3 -m pip install -r whill/requirements.txt
+# Tested 2026-11 with Python 3.11: whill 1.5.0, pyserial 3.5, websocket-client 1.9.2
+# whill is pinned to 1.5.0: whill_bridge.py works around the stop_data_stream bug of 1.5.0 by sending STOP directly.
+# Keep this file ASCII only: pip on Japanese Windows reads it as cp932.
+whill==1.5.0
+pyserial>=3.4
+websocket-client>=1.0
